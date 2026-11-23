@@ -27,7 +27,7 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
   // Yeni Sınıf Formu
   const [newClassName, setNewClassName] = useState('');
   const [newYear, setNewYear] = useState(settings.academic_year || '2025-2026');
-  const [newSchool, setNewSchool] = useState(settings.school_name || '');
+  const [newSchool, setNewSchool] = useState('');
 
   // Tekil Öğrenci Formu
   const [studentNo, setStudentNo] = useState('');
@@ -236,7 +236,7 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
               type="text"
               value={newSchool}
               onChange={(e) => setNewSchool(e.target.value)}
-              placeholder="Okul Adı (Opsiyonel)"
+              placeholder="Okul Adı (Boş bırakılırsa Ayarlar'dan alınır)"
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
             />
             <button
