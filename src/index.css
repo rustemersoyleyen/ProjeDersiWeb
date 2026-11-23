@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+/* ============================================================================
+   DİKEY A4 YAZDIRMA MOTORU (1 SAYFADA 2 ÖĞRENCİ — ÜST/ALT)
+   A4 Boyutu: 210mm x 297mm | Sayfa Kenar Boşluğu: 6mm
+   Kullanılabilir Alan: 198mm x 285mm -> Her Öğrenci Kartı: ~139.5mm
+   ============================================================================ */
+
+.a4-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  background: #ffffff;
+  margin: 0 auto 24px auto;
+  padding: 6mm;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.12);
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.student-half-card {
+  height: 139.5mm;
+  max-height: 139.5mm;
+  overflow: hidden;
+  border: 1.2px solid #334155;
+  border-radius: 3px;
+  padding: 3.5mm 4mm;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.cut-divider {
+  height: 6mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.cut-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed #64748b;
+}
+
+.cut-divider span {
+  position: relative;
+  background: #ffffff;
+  padding: 0 8px;
+  font-size: 8px;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 6mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 210mm;
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .a4-sheet {
+    width: 198mm !important;
+    height: 285mm !important;
+    min-height: 285mm !important;
+    max-height: 285mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .a4-sheet:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .student-half-card {
+    height: 139.5mm !important;
+    max-height: 139.5mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

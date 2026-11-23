@@ -1,0 +1,10 @@
+# Hassas PHP yapılandırma ve dahili dosyalara doğrudan erişimi engelle
+<FilesMatch "^(config\.php|config\.example\.php|db\.php|auth\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
