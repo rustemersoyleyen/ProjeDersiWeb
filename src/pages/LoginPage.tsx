@@ -153,7 +153,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                   type="url"
                   value={apiUrl}
                   onChange={(e) => setApiUrl(e.target.value)}
-                  placeholder="https://kiracbilisim.net/proje-api/index.php"
+                  placeholder="https://okul360.kiracbilisim.net/proje-api/index.php"
                   className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-mono"
                 />
                 <div className="flex items-center justify-end gap-2">
@@ -168,11 +168,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 </div>
                 {apiStatus && (
                   <div
-                    className={`flex items-start gap-1.5 text-xs p-2 rounded-lg ${
-                      apiStatus.ok
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}
+                    className={`flex items-start gap-1.5 text-xs p-2 rounded-lg ${apiStatus.ok
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                      }`}
                   >
                     {apiStatus.ok ? (
                       <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />

@@ -23,7 +23,7 @@ export function getDefaultApiBase(): string {
   const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
   if (envBase) return envBase;
   if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-    return 'https://kiracbilisim.net/proje-api/index.php';
+    return 'https://okul360.kiracbilisim.net/proje-api/index.php';
   }
   return './api/index.php';
 }
@@ -31,6 +31,10 @@ export function getDefaultApiBase(): string {
 export function getApiBase(): string {
   if (typeof window !== 'undefined') {
     const custom = window.localStorage.getItem(STORAGE_API_KEY)?.trim();
+    if (custom === 'https://kiracbilisim.net/proje-api/index.php') {
+      window.localStorage.removeItem(STORAGE_API_KEY);
+      return getDefaultApiBase();
+    }
     if (custom) return custom;
   }
   return getDefaultApiBase();
@@ -69,8 +73,21 @@ async function request<T>(
   } = {}
 ): Promise<T> {
   const { method = 'GET', params, body } = options;
+  const upperMethod = method.toUpperCase();
   const qs = new URLSearchParams();
   qs.set('route', route);
+
+  // Windows IIS (PleskWin) uyumluluğu: PUT/DELETE isteklerini POST + _method ile gönder
+  const fetchMethod = upperMethod === 'GET' ? 'GET' : 'POST';
+  if (upperMethod === 'PUT' || upperMethod === 'DELETE') {
+    qs.set('_method', upperMethod);
+  }
+
+  const token = getAuthToken();
+  if (token) {
+    qs.set('_token', token);
+  }
+
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
@@ -79,29 +96,27 @@ async function request<T>(
     });
   }
 
+  // CORS simple request (IIS OPTIONS preflight engeline takılmaz)
   const headers: Record<string, string> = {};
   if (body !== undefined) {
-    headers['Content-Type'] = 'application/json';
-  }
-  const token = getAuthToken();
-  if (token) {
-    headers['X-Auth-Token'] = token;
+    headers['Content-Type'] = 'text/plain;charset=UTF-8';
   }
 
   const base = getApiBase();
   const sep = base.includes('?') ? '&' : '?';
+  const isCrossOrigin = base.startsWith('http://') || base.startsWith('https://');
 
   let res: Response;
   try {
     res = await fetch(`${base}${sep}${qs.toString()}`, {
-      method,
-      credentials: 'include',
+      method: fetchMethod,
+      credentials: isCrossOrigin ? 'omit' : 'include',
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new Error(
-      `API sunucusuna ulaşılamadı (${base}). Lütfen kiracbilisim.net üzerindeki API klasörünü ve adresi kontrol edin.`
+      `API sunucusuna ulaşılamadı (${base}). Lütfen API adresini kontrol edin.`
     );
   }
 

@@ -22,6 +22,14 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
+// Windows IIS (PleskWin) uyumluluğu: POST + ?_method=PUT|DELETE desteği
+if ($method === 'POST' && !empty($_GET['_method'])) {
+    $override = strtoupper(trim((string)$_GET['_method']));
+    if (in_array($override, ['PUT', 'DELETE'], true)) {
+        $method = $override;
+    }
+}
+
 $route = trim((string)($_GET['route'] ?? ''), '/');
 $parts = $route !== '' ? explode('/', $route) : [];
 $resource = $parts[0] ?? '';

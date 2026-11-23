@@ -36,7 +36,11 @@ function pd_issue_token(int $userId): string {
 }
 
 function pd_extract_token(): ?string {
-    // 1. Öncelik: X-Auth-Token başlığı (cPanel/Apache'de asla kırpılmaz)
+    // 1. Öncelik: HTTPS query parametresi (_token) — IIS CORS preflight (OPTIONS) gerektirmez
+    if (!empty($_GET['_token'])) {
+        return trim((string)$_GET['_token']);
+    }
+    // 2. Öncelik: X-Auth-Token başlığı
     if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
         return trim((string)$_SERVER['HTTP_X_AUTH_TOKEN']);
     }

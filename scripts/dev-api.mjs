@@ -122,7 +122,12 @@ function readBody(req) {
   });
 }
 
-function getSessionUser(req) {
+function getSessionUser(req, url) {
+  const qToken = url?.searchParams.get('_token');
+  if (qToken && sessions.has(qToken)) {
+    const uid = sessions.get(qToken);
+    return db.users.find((u) => u.id === uid && u.is_active === 1) || null;
+  }
   const token = req.headers['x-auth-token'];
   if (token && sessions.has(String(token))) {
     const uid = sessions.get(String(token));
@@ -145,9 +150,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1:8080');
   const route = (url.searchParams.get('route') || '').replace(/^\/+|\/+$/g, '');
   const [resource, sub] = route.split('/');
-  const method = req.method || 'GET';
+  const rawMethod = req.method || 'GET';
+  const overrideMethod = rawMethod === 'POST' ? (url.searchParams.get('_method') || '').toUpperCase() : '';
+  const method = ['PUT', 'DELETE'].includes(overrideMethod) ? overrideMethod : rawMethod;
   const body = ['POST', 'PUT', 'DELETE'].includes(method) ? await readBody(req) : {};
-  const user = getSessionUser(req);
+  const user = getSessionUser(req, url);
 
   if (resource === 'health') {
     return send(res, { ok: true, db: 'connected', courses: db.courses.length, questions: db.questions.length });

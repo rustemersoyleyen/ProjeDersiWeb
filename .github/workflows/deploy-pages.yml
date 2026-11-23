@@ -35,7 +35,7 @@ jobs:
 
       - name: Build frontend for GitHub Pages
         env:
-          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://kiracbilisim.net/proje-api/index.php' }}
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://okul360.kiracbilisim.net/proje-api/index.php' }}
         run: npm run build
 
       - name: Setup Pages
