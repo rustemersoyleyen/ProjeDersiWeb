@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
-import { ClipboardCheck, Lock, User as UserIcon, AlertCircle } from 'lucide-react';
-import { api } from '../api/client';
+import {
+  ClipboardCheck,
+  Lock,
+  User as UserIcon,
+  AlertCircle,
+  Server,
+  CheckCircle2,
+} from 'lucide-react';
+import { api, getApiBase, setApiBase } from '../api/client';
 
 interface LoginPageProps {
   onSuccess: () => Promise<void>;
@@ -11,6 +18,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // API Sunucu Adresi Ayarı (GitHub Pages -> kiracbilisim.net MySQL API)
+  const [showApiConfig, setShowApiConfig] = useState(false);
+  const [apiUrl, setApiUrl] = useState(getApiBase());
+  const [apiStatus, setApiStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testingApi, setTestingApi] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +36,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       setError(err instanceof Error ? err.message : 'Giriş yapılamadı.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestApi = async () => {
+    setApiBase(apiUrl);
+    setTestingApi(true);
+    setApiStatus(null);
+    try {
+      const res = await api.health();
+      setApiStatus({
+        ok: true,
+        text: `MySQL bağlantısı başarılı (${res.courses} ders, ${res.questions} teknik soru hazır).`,
+      });
+    } catch (err) {
+      setApiStatus({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Bağlantı başarısız.',
+      });
+    } finally {
+      setTestingApi(false);
     }
   };
 
@@ -96,9 +129,62 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
             {loading ? 'Giriş yapılıyor...' : 'Öğretmen / Admin Girişi'}
           </button>
 
-          <p className="text-center text-xs text-slate-400 pt-1">
+          <p className="text-center text-xs text-slate-400">
             İlk kurulum varsayılan yönetici: <code className="text-slate-600 font-semibold">admin</code> / <code className="text-slate-600 font-semibold">admin123</code>
           </p>
+
+          {/* API Sunucu Ayarı (GitHub Pages <-> kiracbilisim.net) */}
+          <div className="pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowApiConfig(!showApiConfig)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 cursor-pointer"
+            >
+              <Server className="w-3.5 h-3.5" />
+              <span>Veritabanı API Adresi: {getApiBase()}</span>
+            </button>
+
+            {showApiConfig && (
+              <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <label className="block text-[11px] font-semibold text-slate-600">
+                  kiracbilisim.net PHP API Adresi
+                </label>
+                <input
+                  type="url"
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://kiracbilisim.net/proje-api/index.php"
+                  className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-mono"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={testingApi}
+                    onClick={handleTestApi}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium cursor-pointer"
+                  >
+                    {testingApi ? 'Test ediliyor...' : 'Kaydet & Bağlantıyı Test Et'}
+                  </button>
+                </div>
+                {apiStatus && (
+                  <div
+                    className={`flex items-start gap-1.5 text-xs p-2 rounded-lg ${
+                      apiStatus.ok
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}
+                  >
+                    {apiStatus.ok ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    )}
+                    <span>{apiStatus.text}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </form>
       </div>
     </div>

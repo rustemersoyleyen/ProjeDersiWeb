@@ -123,6 +123,11 @@ function readBody(req) {
 }
 
 function getSessionUser(req) {
+  const token = req.headers['x-auth-token'];
+  if (token && sessions.has(String(token))) {
+    const uid = sessions.get(String(token));
+    return db.users.find((u) => u.id === uid && u.is_active === 1) || null;
+  }
   const cookie = req.headers.cookie || '';
   const m = cookie.match(/PD_DEV_SID=([^;]+)/);
   if (!m) return null;
@@ -143,6 +148,10 @@ const server = http.createServer(async (req, res) => {
   const method = req.method || 'GET';
   const body = ['POST', 'PUT', 'DELETE'].includes(method) ? await readBody(req) : {};
   const user = getSessionUser(req);
+
+  if (resource === 'health') {
+    return send(res, { ok: true, db: 'connected', courses: db.courses.length, questions: db.questions.length });
+  }
 
   if (resource === 'auth') {
     if (sub === 'me' && method === 'GET') {
@@ -165,7 +174,7 @@ const server = http.createServer(async (req, res) => {
       sessions.set(sid, found.id);
       res.setHeader('Set-Cookie', `PD_DEV_SID=${sid}; Path=/; HttpOnly; SameSite=Lax`);
       const { password: _, ...safeUser } = found;
-      return send(res, { ok: true, user: safeUser });
+      return send(res, { ok: true, token: sid, user: safeUser });
     }
     if (sub === 'logout' && method === 'POST') {
       res.setHeader('Set-Cookie', 'PD_DEV_SID=; Path=/; Max-Age=0');

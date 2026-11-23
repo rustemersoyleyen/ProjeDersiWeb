@@ -1,20 +1,55 @@
 <?php
 /**
- * PDO Veritabanı Bağlantısı ve Yardımcı JSON Fonksiyonları
+ * PDO Veritabanı Bağlantısı, CORS ve Yardımcı JSON Fonksiyonları
  */
 
-function pd_load_config(): array {
+function pd_try_load_config(): ?array {
+    static $cached = null;
+    static $loaded = false;
+    if ($loaded) {
+        return $cached;
+    }
+    $loaded = true;
     $configPath = __DIR__ . '/config.php';
     if (!file_exists($configPath)) {
+        return null;
+    }
+    $cfg = require $configPath;
+    $cached = is_array($cfg) ? $cfg : null;
+    return $cached;
+}
+
+function pd_load_config(): array {
+    $cfg = pd_try_load_config();
+    if (!$cfg) {
         pd_json_response([
             'error' => 'api/config.php dosyası bulunamadı. Lütfen api/config.example.php dosyasını kopyalayıp MySQL bilgilerinizi girin.'
         ], 500);
     }
-    $cfg = require $configPath;
-    if (!is_array($cfg)) {
-        pd_json_response(['error' => 'Geçersiz config.php formatı.'], 500);
-    }
     return $cfg;
+}
+
+function pd_send_cors_headers(): void {
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if ($origin === '') {
+        return;
+    }
+    $cfg = pd_try_load_config();
+    $allowed = $cfg['allowed_origins'] ?? [
+        'https://rustemersoyleyen.github.io',
+        'https://kiracbilisim.net',
+        'https://www.kiracbilisim.net',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ];
+    if (in_array('*', $allowed, true) || in_array($origin, $allowed, true)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token');
+        header('Access-Control-Max-Age: 86400');
+    }
 }
 
 function pd_db(): PDO {
@@ -35,13 +70,16 @@ function pd_db(): PDO {
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
     } catch (PDOException $e) {
-        $msg = !empty($cfg['debug']) ? ('Veritabanı bağlantı hatası: ' . $e->getMessage()) : 'Veritabanına bağlanılamadı. Lütfen api/config.php bilgilerini kontrol edin.';
+        $msg = !empty($cfg['debug'])
+            ? ('Veritabanı bağlantı hatası: ' . $e->getMessage())
+            : 'Veritabanına bağlanılamadı. Lütfen api/config.php bilgilerini kontrol edin.';
         pd_json_response(['error' => $msg], 500);
     }
     return $pdo;
 }
 
 function pd_json_response($data, int $status = 200): void {
+    pd_send_cors_headers();
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

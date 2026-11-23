@@ -1,7 +1,82 @@
 <?php
 /**
- * Oturum (Session) ve Rol Bazlı Yetki Yönetimi (Admin & Öğretmen)
+ * Oturum Yönetimi (HMAC-SHA256 İmzalı Token + PHP Session Çerez Desteği)
+ * GitHub Pages -> kiracbilisim.net çapraz alan adı kullanımında %100 güvenilir çalışır.
  */
+
+function pd_token_secret(): string {
+    $cfg = pd_load_config();
+    if (!empty($cfg['token_secret'])) {
+        return (string)$cfg['token_secret'];
+    }
+    // config.php'de token_secret yoksa DB kimliğinden türetilmiş kararlı gizli anahtar
+    return hash('sha256', ($cfg['db_name'] ?? '') . '|' . ($cfg['db_user'] ?? '') . '|' . ($cfg['db_pass'] ?? '') . '|pd_rubrik_v1');
+}
+
+function pd_base64url_encode(string $data): string {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function pd_base64url_decode(string $data): string {
+    $pad = strlen($data) % 4;
+    if ($pad > 0) {
+        $data .= str_repeat('=', 4 - $pad);
+    }
+    return base64_decode(strtr($data, '-_', '+/')) ?: '';
+}
+
+function pd_issue_token(int $userId): string {
+    $payload = json_encode([
+        'uid' => $userId,
+        'exp' => time() + (60 * 60 * 12), // 12 saat geçerli
+    ]);
+    $encoded = pd_base64url_encode((string)$payload);
+    $sig = pd_base64url_encode(hash_hmac('sha256', $encoded, pd_token_secret(), true));
+    return $encoded . '.' . $sig;
+}
+
+function pd_extract_token(): ?string {
+    // 1. Öncelik: X-Auth-Token başlığı (cPanel/Apache'de asla kırpılmaz)
+    if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
+        return trim((string)$_SERVER['HTTP_X_AUTH_TOKEN']);
+    }
+    // 2. Öncelik: Authorization: Bearer <token>
+    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if ($auth === '' && function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        foreach ($headers as $k => $v) {
+            if (strtolower($k) === 'x-auth-token') {
+                return trim((string)$v);
+            }
+            if (strtolower($k) === 'authorization') {
+                $auth = (string)$v;
+            }
+        }
+    }
+    if (preg_match('/^Bearer\s+(.+)$/i', trim($auth), $m)) {
+        return trim($m[1]);
+    }
+    return null;
+}
+
+function pd_verify_token(?string $token): ?int {
+    if (!$token || strpos($token, '.') === false) {
+        return null;
+    }
+    [$encoded, $sig] = explode('.', $token, 2);
+    $expected = pd_base64url_encode(hash_hmac('sha256', $encoded, pd_token_secret(), true));
+    if (!hash_equals($expected, $sig)) {
+        return null;
+    }
+    $payload = json_decode(pd_base64url_decode($encoded), true);
+    if (!is_array($payload) || empty($payload['uid']) || empty($payload['exp'])) {
+        return null;
+    }
+    if (time() > (int)$payload['exp']) {
+        return null;
+    }
+    return (int)$payload['uid'];
+}
 
 function pd_start_session(): void {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -14,29 +89,37 @@ function pd_start_session(): void {
 
     session_name($sessionName);
     session_set_cookie_params([
-        'lifetime' => 60 * 60 * 12, // 12 saat
+        'lifetime' => 60 * 60 * 12,
         'path' => '/',
         'secure' => $isHttps,
         'httponly' => true,
-        'samesite' => 'Lax',
+        'samesite' => $isHttps ? 'None' : 'Lax',
     ]);
     session_start();
 }
 
 function pd_current_user(): ?array {
-    pd_start_session();
-    if (empty($_SESSION['pd_user_id'])) {
+    $userId = pd_verify_token(pd_extract_token());
+
+    if (!$userId) {
+        pd_start_session();
+        if (!empty($_SESSION['pd_user_id'])) {
+            $userId = (int)$_SESSION['pd_user_id'];
+        }
+    }
+
+    if (!$userId) {
         return null;
     }
+
     $pdo = pd_db();
     $stmt = $pdo->prepare(
         'SELECT id, username, full_name, branch, title, role, is_active, must_change_password
          FROM pd_users WHERE id = ? LIMIT 1'
     );
-    $stmt->execute([(int)$_SESSION['pd_user_id']]);
+    $stmt->execute([$userId]);
     $user = $stmt->fetch();
     if (!$user || (int)$user['is_active'] !== 1) {
-        $_SESSION = [];
         return null;
     }
     $user['id'] = (int)$user['id'];
@@ -116,7 +199,6 @@ function pd_handle_auth(string $action, string $method): void {
         }
 
         $valid = false;
-        // İlk kurulumda varsayılan admin şifresini otomatik gerçek bcrypt hash'e yükselt
         if ($user['password_hash'] === 'INIT_ADMIN123' && $password === 'admin123') {
             $valid = true;
             $newHash = password_hash($password, PASSWORD_DEFAULT);
@@ -132,9 +214,11 @@ function pd_handle_auth(string $action, string $method): void {
 
         session_regenerate_id(true);
         $_SESSION['pd_user_id'] = (int)$user['id'];
+        $token = pd_issue_token((int)$user['id']);
 
         pd_json_response([
             'ok' => true,
+            'token' => $token,
             'user' => [
                 'id' => (int)$user['id'],
                 'username' => $user['username'],

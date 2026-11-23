@@ -16,7 +16,49 @@ import type {
   User,
 } from '../types';
 
-const API_BASE = './api/index.php';
+const STORAGE_API_KEY = 'pd_api_base';
+const STORAGE_TOKEN_KEY = 'pd_auth_token';
+
+export function getDefaultApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+  if (envBase) return envBase;
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+    return 'https://kiracbilisim.net/proje-api/index.php';
+  }
+  return './api/index.php';
+}
+
+export function getApiBase(): string {
+  if (typeof window !== 'undefined') {
+    const custom = window.localStorage.getItem(STORAGE_API_KEY)?.trim();
+    if (custom) return custom;
+  }
+  return getDefaultApiBase();
+}
+
+export function setApiBase(url: string): void {
+  const clean = url.trim();
+  if (typeof window === 'undefined') return;
+  if (!clean || clean === getDefaultApiBase()) {
+    window.localStorage.removeItem(STORAGE_API_KEY);
+  } else {
+    window.localStorage.setItem(STORAGE_API_KEY, clean);
+  }
+}
+
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.sessionStorage.getItem(STORAGE_TOKEN_KEY);
+}
+
+export function setAuthToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    window.sessionStorage.setItem(STORAGE_TOKEN_KEY, token);
+  } else {
+    window.sessionStorage.removeItem(STORAGE_TOKEN_KEY);
+  }
+}
 
 async function request<T>(
   route: string,
@@ -37,12 +79,31 @@ async function request<T>(
     });
   }
 
-  const res = await fetch(`${API_BASE}?${qs.toString()}`, {
-    method,
-    credentials: 'include',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const headers: Record<string, string> = {};
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const token = getAuthToken();
+  if (token) {
+    headers['X-Auth-Token'] = token;
+  }
+
+  const base = getApiBase();
+  const sep = base.includes('?') ? '&' : '?';
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}${sep}${qs.toString()}`, {
+      method,
+      credentials: 'include',
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error(
+      `API sunucusuna ulaşılamadı (${base}). Lütfen kiracbilisim.net üzerindeki API klasörünü ve adresi kontrol edin.`
+    );
+  }
 
   const text = await res.text();
   let data: unknown = null;
@@ -52,11 +113,14 @@ async function request<T>(
     throw new Error(
       res.ok
         ? 'Sunucudan geçersiz JSON yanıtı alındı.'
-        : `Sunucu hatası (${res.status}): API bağlantısını kontrol edin.`
+        : `Sunucu hatası (${res.status}): API adresini (${base}) ve PHP yapılandırmasını kontrol edin.`
     );
   }
 
   if (!res.ok) {
+    if (res.status === 401 && route !== '/auth/login') {
+      setAuthToken(null);
+    }
     const errMsg =
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error: unknown }).error)
@@ -68,14 +132,29 @@ async function request<T>(
 }
 
 export const api = {
+  // Health Check
+  health: () =>
+    request<{ ok: boolean; db: string; courses: number; questions: number }>('/health'),
+
   // Auth
   me: () => request<AuthBootstrap>('/auth/me'),
-  login: (username: string, password: string) =>
-    request<{ ok: boolean; user: User }>('/auth/login', {
+  login: async (username: string, password: string) => {
+    const res = await request<{ ok: boolean; token?: string; user: User }>('/auth/login', {
       method: 'POST',
       body: { username, password },
-    }),
-  logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+    });
+    if (res.token) {
+      setAuthToken(res.token);
+    }
+    return res;
+  },
+  logout: async () => {
+    try {
+      await request<{ ok: boolean }>('/auth/logout', { method: 'POST' });
+    } finally {
+      setAuthToken(null);
+    }
+  },
   changePassword: (current_password: string, new_password: string) =>
     request<{ ok: boolean }>('/auth/change-password', {
       method: 'POST',

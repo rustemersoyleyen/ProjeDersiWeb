@@ -2,6 +2,7 @@
 /**
  * Proje Değerlendirme ve Rubik Sistemi - Tek Giriş Noktalı PHP REST API
  * Kullanım: api/index.php?route=/auth/me
+ * GitHub Pages + kiracbilisim.net MySQL Hibrit Mimarisi ile tam uyumludur.
  */
 
 declare(strict_types=1);
@@ -12,6 +13,8 @@ require_once __DIR__ . '/endpoints/users_courses.php';
 require_once __DIR__ . '/endpoints/classes_students.php';
 require_once __DIR__ . '/endpoints/criteria_questions.php';
 require_once __DIR__ . '/endpoints/evaluations_print.php';
+
+pd_send_cors_headers();
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 if ($method === 'OPTIONS') {
@@ -26,6 +29,17 @@ $subAction = $parts[1] ?? '';
 
 try {
     switch ($resource) {
+        case 'health':
+            $pdo = pd_db();
+            $qCount = (int)$pdo->query('SELECT COUNT(*) FROM pd_questions')->fetchColumn();
+            $cCount = (int)$pdo->query('SELECT COUNT(*) FROM pd_courses')->fetchColumn();
+            pd_json_response([
+                'ok' => true,
+                'db' => 'connected',
+                'courses' => $cCount,
+                'questions' => $qCount,
+            ]);
+            break;
         case 'auth':
             pd_handle_auth($subAction, $method);
             break;
@@ -72,7 +86,7 @@ try {
             pd_json_response(['error' => 'Bilinmeyen API rotası: ' . $route], 404);
     }
 } catch (Throwable $e) {
-    $cfg = @require __DIR__ . '/config.php';
+    $cfg = pd_try_load_config();
     $debug = is_array($cfg) && !empty($cfg['debug']);
     pd_json_response([
         'error' => $debug ? $e->getMessage() : 'Sunucu tarafında beklenmeyen bir hata oluştu.'

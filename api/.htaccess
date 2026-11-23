@@ -1,3 +1,8 @@
+# Apache/cPanel üzerinde Authorization başlığını PHP'ye aktar
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
 # Hassas PHP yapılandırma ve dahili dosyalara doğrudan erişimi engelle
 <FilesMatch "^(config\.php|config\.example\.php|db\.php|auth\.php)$">
     <IfModule mod_authz_core.c>
