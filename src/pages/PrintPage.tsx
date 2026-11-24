@@ -330,7 +330,7 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
             >
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.short_code})
+                  {c.name}
                 </option>
               ))}
             </select>

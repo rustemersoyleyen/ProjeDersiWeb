@@ -71,10 +71,10 @@ function createInitialDb() {
       },
     ],
     courses: [
-      { id: 1, name: 'Nesne Tabanlı Programlama', short_code: 'NTP', description: 'Sınıf, nesne, kapsülleme, kalıtım projeleri', question_points: 20, sort_order: 1 },
-      { id: 2, name: 'FrontEnd Web Tasarımı', short_code: 'FEW', description: 'HTML, CSS, JavaScript arayüz projeleri', question_points: 20, sort_order: 2 },
-      { id: 3, name: 'Web Tabanlı Proje', short_code: 'WTP', description: 'Backend, veritabanı, CRUD web projeleri', question_points: 20, sort_order: 3 },
-      { id: 4, name: 'Mobil Uygulama', short_code: 'MOB', description: 'Mobil ekran akışı ve veri yönetimi projeleri', question_points: 20, sort_order: 4 },
+      { id: 1, name: '1.Dönem 1.Uygulama (Nesne Tabanlı Programlama)', short_code: '1.Dönem 1.Uyg.', description: 'Sınıf, nesne, kapsülleme, kalıtım projeleri', question_points: 20, sort_order: 1 },
+      { id: 2, name: '1.Dönem 2.Uygulama (FrontEnd Web Tasarımı)', short_code: '1.Dönem 2.Uyg.', description: 'HTML, CSS, JavaScript arayüz projeleri', question_points: 20, sort_order: 2 },
+      { id: 3, name: '2.Dönem 1.Uygulama (Web Tabanlı Proje)', short_code: '2.Dönem 1.Uyg.', description: 'Backend, veritabanı, CRUD web projeleri', question_points: 20, sort_order: 3 },
+      { id: 4, name: '2.Dönem 2.Uygulama (Mobil Uygulama)', short_code: '2.Dönem 2.Uyg.', description: 'Mobil ekran akışı ve veri yönetimi projeleri', question_points: 20, sort_order: 4 },
     ],
     outcomes: [
       { id: 1, code: 'K1', name: 'Planlama', description: 'Proje kapsamı, analiz ve iş-zaman planlaması', default_weight: 15, is_question_outcome: 0, sort_order: 1 },

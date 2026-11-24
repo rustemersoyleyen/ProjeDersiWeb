@@ -174,7 +174,7 @@ export const QuestionsPage: React.FC<QuestionsPageProps> = ({ courses }) => {
                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
             }`}
           >
-            {c.short_code} · {c.name}
+            {c.name}
           </button>
         ))}
       </div>

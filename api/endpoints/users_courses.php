@@ -160,7 +160,7 @@ function pd_handle_courses(string $method): void {
         pd_require_admin();
         $b = pd_get_json_body();
         $name = trim((string)($b['name'] ?? ''));
-        $shortCode = strtoupper(trim((string)($b['short_code'] ?? '')));
+        $shortCode = trim((string)($b['short_code'] ?? ''));
         $description = trim((string)($b['description'] ?? ''));
         $questionPoints = max(0, min(100, (int)($b['question_points'] ?? 20)));
         $sortOrder = (int)($b['sort_order'] ?? 10);
@@ -182,7 +182,7 @@ function pd_handle_courses(string $method): void {
         $b = pd_get_json_body();
         $id = (int)($b['id'] ?? 0);
         $name = trim((string)($b['name'] ?? ''));
-        $shortCode = strtoupper(trim((string)($b['short_code'] ?? '')));
+        $shortCode = trim((string)($b['short_code'] ?? ''));
         $description = trim((string)($b['description'] ?? ''));
         $questionPoints = max(0, min(100, (int)($b['question_points'] ?? 20)));
         $sortOrder = (int)($b['sort_order'] ?? 1);

@@ -127,14 +127,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateEvaluate
                   <th className="px-4 py-3 font-semibold w-20">No</th>
                   <th className="px-4 py-3 font-semibold">Öğrenci Adı Soyadı</th>
                   <th className="px-4 py-3 font-semibold">Proje Adı</th>
-                  {matrix.courses.map((course) => (
-                    <th key={course.id} className="px-3 py-3 font-semibold text-center">
-                      <div>{course.short_code}</div>
-                      <div className="text-[10px] font-normal normal-case text-slate-400 truncate max-w-[130px] mx-auto">
-                        {course.name}
-                      </div>
-                    </th>
-                  ))}
+                  {matrix.courses.map((course) => {
+                    const hasParen = course.name.includes('(') && course.name.includes(')');
+                    const topLabel = hasParen
+                      ? course.name.slice(0, course.name.indexOf('(')).trim()
+                      : course.short_code;
+                    const subLabel = hasParen
+                      ? course.name.slice(course.name.indexOf('(') + 1, course.name.lastIndexOf(')')).trim()
+                      : course.name;
+                    return (
+                      <th key={course.id} className="px-3 py-3 font-semibold text-center">
+                        <div className="normal-case text-slate-800">{topLabel}</div>
+                        <div
+                          className="text-[10px] font-normal normal-case text-slate-500 truncate max-w-[165px] mx-auto"
+                          title={course.name}
+                        >
+                          {subLabel}
+                        </div>
+                      </th>
+                    );
+                  })}
                   <th className="px-4 py-3 font-semibold text-center">Ort.</th>
                 </tr>
               </thead>

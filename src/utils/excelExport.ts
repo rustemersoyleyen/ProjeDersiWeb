@@ -6,7 +6,7 @@ export function exportMatrixToExcel(className: string, matrix: MatrixResponse): 
     'Öğrenci No',
     'Ad Soyad',
     'Proje Adı',
-    ...matrix.courses.map((c) => `${c.name} (${c.short_code})`),
+    ...matrix.courses.map((c) => c.name),
     'Ortalama',
   ];
 

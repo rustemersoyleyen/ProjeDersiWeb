@@ -204,12 +204,12 @@ INSERT IGNORE INTO `pd_settings` (`setting_key`, `setting_value`) VALUES
 ('academic_year', '2025-2026'),
 ('evaluation_title', 'PROJE DEĞERLENDİRME VE RUBİK FORMU');
 
--- 4 Proje Alanı / Ders
+-- 4 Proje Alanı / Ders (1. ve 2. Dönem Uygulamaları)
 INSERT IGNORE INTO `pd_courses` (`id`, `name`, `short_code`, `description`, `question_points`, `sort_order`) VALUES
-(1, 'Nesne Tabanlı Programlama', 'NTP', 'Sınıf, nesne, kapsülleme, kalıtım ve masaüstü/konsol uygulama projeleri', 20, 1),
-(2, 'FrontEnd Web Tasarımı', 'FEW', 'HTML, CSS, JavaScript ve responsive arayüz tasarım projeleri', 20, 2),
-(3, 'Web Tabanlı Proje', 'WTP', 'Backend, veritabanı, CRUD işlemleri ve dinamik web projeleri', 20, 3),
-(4, 'Mobil Uygulama', 'MOB', 'Mobil ekran akışı, veri yönetimi ve etkileşimli mobil uygulama projeleri', 20, 4);
+(1, '1.Dönem 1.Uygulama (Nesne Tabanlı Programlama)', '1.Dönem 1.Uyg.', 'Sınıf, nesne, kapsülleme, kalıtım ve masaüstü/konsol uygulama projeleri', 20, 1),
+(2, '1.Dönem 2.Uygulama (FrontEnd Web Tasarımı)', '1.Dönem 2.Uyg.', 'HTML, CSS, JavaScript ve responsive arayüz tasarım projeleri', 20, 2),
+(3, '2.Dönem 1.Uygulama (Web Tabanlı Proje)', '2.Dönem 1.Uyg.', 'Backend, veritabanı, CRUD işlemleri ve dinamik web projeleri', 20, 3),
+(4, '2.Dönem 2.Uygulama (Mobil Uygulama)', '2.Dönem 2.Uyg.', 'Mobil ekran akışı, veri yönetimi ve etkileşimli mobil uygulama projeleri', 20, 4);
 
 -- 5 Temel Kazanım
 INSERT IGNORE INTO `pd_outcomes` (`id`, `code`, `name`, `description`, `default_weight`, `is_question_outcome`, `sort_order`) VALUES
