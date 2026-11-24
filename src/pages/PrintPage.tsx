@@ -21,8 +21,9 @@ const StudentHalfCard: React.FC<{
   data: PrintDataResponse;
   signatureTeachers: SignatureTeacher[];
   filledMode: boolean;
+  compactFont: boolean;
   dateLabel: string;
-}> = ({ student, data, signatureTeachers, filledMode, dateLabel }) => {
+}> = ({ student, data, signatureTeachers, filledMode, compactFont, dateLabel }) => {
   // Öncelik her zaman Ayarlar sayfasındaki güncel okul adıdır
   const schoolName =
     data.settings.school_name?.trim() || data.class_info.school_name?.trim() || '';
@@ -43,15 +44,27 @@ const StudentHalfCard: React.FC<{
         <div className="flex items-start justify-between border-b border-slate-700 pb-1 mb-1.5">
           <div className="min-w-0 pr-2">
             {schoolName && (
-              <div className="text-[8.5px] font-semibold text-slate-600 uppercase truncate">
+              <div
+                className={`${
+                  compactFont ? 'text-[8.5px]' : 'text-[9.5px]'
+                } font-semibold text-slate-600 uppercase truncate leading-tight`}
+              >
                 {schoolName}
               </div>
             )}
-            <div className="text-[10.5px] font-extrabold tracking-tight text-slate-900">
+            <div
+              className={`${
+                compactFont ? 'text-[10.5px]' : 'text-[11.8px]'
+              } font-extrabold tracking-tight text-slate-900 leading-tight mt-0.5`}
+            >
               {formTitle} — <span className="underline">{data.course.name}</span>
             </div>
           </div>
-          <div className="text-right text-[8.5px] text-slate-700 shrink-0 leading-tight">
+          <div
+            className={`text-right ${
+              compactFont ? 'text-[8.5px]' : 'text-[9.5px]'
+            } text-slate-700 shrink-0 leading-snug`}
+          >
             <div>
               <strong>Sınıf:</strong> {data.class_info.name} ({data.class_info.academic_year})
             </div>
@@ -62,7 +75,11 @@ const StudentHalfCard: React.FC<{
         </div>
 
         {/* Öğrenci & Proje Bilgisi */}
-        <div className="grid grid-cols-12 gap-1.5 bg-slate-100 border border-slate-300 rounded px-2 py-1 mb-1.5 text-[9.5px]">
+        <div
+          className={`grid grid-cols-12 gap-1.5 bg-slate-100 border border-slate-300 rounded px-2.5 ${
+            compactFont ? 'py-1 text-[9.5px]' : 'py-1.5 text-[10.8px]'
+          } mb-1.5`}
+        >
           <div className="col-span-2">
             <span className="text-slate-500">No:</span>{' '}
             <strong className="font-mono">{student.student_no}</strong>
@@ -77,11 +94,15 @@ const StudentHalfCard: React.FC<{
         </div>
 
         {/* 1-4. Kazanımlar Rubik Tablosu */}
-        <table className="w-full border-collapse text-[8.2px] leading-tight mb-1.5">
+        <table
+          className={`w-full border-collapse ${
+            compactFont ? 'text-[8.4px] leading-tight' : 'text-[9.6px] leading-[1.28]'
+          } mb-1.5`}
+        >
           <thead>
             <tr className="bg-slate-200 text-slate-900">
-              <th className="border border-slate-400 px-1.5 py-0.5 text-left w-[20%]">Kazanım</th>
-              <th className="border border-slate-400 px-1.5 py-0.5 text-left">Değerlendirme Kriteri</th>
+              <th className="border border-slate-400 px-2 py-0.5 text-left w-[20%]">Kazanım</th>
+              <th className="border border-slate-400 px-2 py-0.5 text-left">Değerlendirme Kriteri</th>
               <th className="border border-slate-400 px-1 py-0.5 text-center w-[9%]">Maks.</th>
               <th className="border border-slate-400 px-1 py-0.5 text-center w-[11%]">Alınan</th>
             </tr>
@@ -96,16 +117,16 @@ const StudentHalfCard: React.FC<{
                     {idx === 0 && (
                       <td
                         rowSpan={items.length}
-                        className="border border-slate-400 px-1.5 py-0.5 font-bold bg-slate-50 align-middle"
+                        className="border border-slate-400 px-2 py-[2.5px] font-bold bg-slate-50 align-middle"
                       >
                         {outcome.code}. {outcome.name}
                       </td>
                     )}
-                    <td className="border border-slate-400 px-1.5 py-0.5">{cr.name}</td>
-                    <td className="border border-slate-400 px-1 py-0.5 text-center font-semibold">
+                    <td className="border border-slate-400 px-2 py-[2.5px]">{cr.name}</td>
+                    <td className="border border-slate-400 px-1 py-[2.5px] text-center font-semibold">
                       {cr.max_score}
                     </td>
-                    <td className="border border-slate-400 px-1 py-0.5 text-center font-bold">
+                    <td className="border border-slate-400 px-1 py-[2.5px] text-center font-bold">
                       {filledMode && earned !== undefined ? earned : ''}
                     </td>
                   </tr>
@@ -117,24 +138,32 @@ const StudentHalfCard: React.FC<{
 
         {/* 5. Kazanım: Öğrenciye Özel 3 Rastgele Teknik Soru */}
         <div className="border border-slate-400 rounded-xs overflow-hidden">
-          <div className="bg-slate-200 px-1.5 py-0.5 text-[8.2px] font-bold flex items-center justify-between border-b border-slate-400">
+          <div
+            className={`bg-slate-200 px-2 py-0.5 ${
+              compactFont ? 'text-[8.4px]' : 'text-[9.6px]'
+            } font-bold flex items-center justify-between border-b border-slate-400`}
+          >
             <span>K5. Teknik Soru / Cevap (Öğrenciye Özel 3 Soru)</span>
             <span>Maks. {data.course.question_points} Puan</span>
           </div>
-          <table className="w-full border-collapse text-[8px] leading-tight">
+          <table
+            className={`w-full border-collapse ${
+              compactFont ? 'text-[8.2px] leading-tight' : 'text-[9.4px] leading-[1.28]'
+            }`}
+          >
             <tbody>
               {[0, 1, 2].map((i) => {
                 const q = student.questions[i];
                 return (
                   <tr key={i}>
-                    <td className="border-t border-slate-300 px-1.5 py-0.5 w-[80%]">
+                    <td className="border-t border-slate-300 px-2 py-[3px] w-[80%]">
                       <strong>S{i + 1}:</strong>{' '}
                       {q ? q.question_text : 'Teknik soru henüz atanmadı (Soru Havuzundan dağıtın).'}
                     </td>
-                    <td className="border-t border-l border-slate-300 px-1 py-0.5 text-center w-[9%] font-semibold">
+                    <td className="border-t border-l border-slate-300 px-1 py-[3px] text-center w-[9%] font-semibold">
                       {q ? `${q.max_score}p` : '-'}
                     </td>
-                    <td className="border-t border-l border-slate-300 px-1 py-0.5 text-center w-[11%] font-bold">
+                    <td className="border-t border-l border-slate-300 px-1 py-[3px] text-center w-[11%] font-bold">
                       {filledMode && q && q.score !== null ? q.score : ''}
                     </td>
                   </tr>
@@ -148,42 +177,68 @@ const StudentHalfCard: React.FC<{
       {/* Alt Alan: Öğrenci Onay Beyanı + Toplam Puan + Öğrenci ve Ders Öğretmenleri İmza Bloğu */}
       <div className="pt-1 mt-1 border-t border-slate-300 space-y-1">
         {/* Öğrenci Değerlendirme Onay Metni */}
-        <div className="bg-slate-50 border border-slate-300 rounded-xs px-2 py-0.5 text-[7.5px] leading-snug text-slate-700 italic">
+        <div
+          className={`bg-slate-50 border border-slate-300 rounded-xs px-2 py-0.5 ${
+            compactFont ? 'text-[7.5px]' : 'text-[8.5px]'
+          } leading-snug text-slate-700 italic`}
+        >
           Projem, ders öğretmenlerim tarafından benim gözetimimde değerlendirilmiş olup değerlendirme sonuçları ve aldığım not tarafıma birlikte açıklanarak bildirilmiştir.
         </div>
 
         <div className="flex items-end justify-between gap-2 pt-0.5">
           {/* Sol: Toplam Puan + Öğrenci İmzası */}
           <div className="flex items-end gap-2.5 shrink-0">
-            <div className="border border-slate-800 rounded px-2 py-0.5 text-center min-w-[68px]">
-              <div className="text-[7px] uppercase font-bold text-slate-600">
+            <div className="border border-slate-800 rounded px-2.5 py-0.5 text-center min-w-[74px]">
+              <div className={`${compactFont ? 'text-[7px]' : 'text-[7.8px]'} uppercase font-bold text-slate-600`}>
                 Toplam ({totalMax})
               </div>
-              <div className="text-[11.5px] font-extrabold text-slate-900 leading-tight min-h-[14px]">
+              <div
+                className={`${
+                  compactFont ? 'text-[11.5px]' : 'text-[13px]'
+                } font-extrabold text-slate-900 leading-tight min-h-[16px]`}
+              >
                 {filledMode && student.evaluation ? student.evaluation.total_score : ''}
               </div>
             </div>
 
-            <div className="text-center min-w-[92px] border-r border-slate-300 pr-2.5">
-              <div className="text-[7.8px] font-bold text-slate-900 truncate max-w-[105px]">
+            <div className="text-center min-w-[98px] border-r border-slate-300 pr-2.5">
+              <div
+                className={`${
+                  compactFont ? 'text-[7.8px]' : 'text-[8.8px]'
+                } font-bold text-slate-900 truncate max-w-[118px]`}
+              >
                 {student.full_name}
               </div>
-              <div className="text-[7px] text-slate-600">Öğrenci (No: {student.student_no})</div>
-              <div className="text-[6.8px] text-slate-400 mt-1.5">İmza: ..................</div>
+              <div className={`${compactFont ? 'text-[7px]' : 'text-[7.8px]'} text-slate-600`}>
+                Öğrenci (No: {student.student_no})
+              </div>
+              <div className={`${compactFont ? 'text-[6.8px]' : 'text-[7.6px]'} text-slate-400 mt-1.5`}>
+                İmza: ..................
+              </div>
             </div>
           </div>
 
           {/* Sağ: Seçilen Tüm Ders Öğretmenleri İmza Bloğu */}
           <div className="flex items-end justify-end flex-wrap gap-x-3 gap-y-1 flex-1">
             {teachersToDisplay.map((t) => (
-              <div key={t.id} className="text-center min-w-[78px]">
-                <div className="text-[7.8px] font-bold text-slate-900 truncate max-w-[110px]">
+              <div key={t.id} className="text-center min-w-[84px]">
+                <div
+                  className={`${
+                    compactFont ? 'text-[7.8px]' : 'text-[8.8px]'
+                  } font-bold text-slate-900 truncate max-w-[120px]`}
+                >
                   {t.full_name}
                 </div>
-                <div className="text-[7px] text-slate-600 truncate max-w-[110px]">
+                <div
+                  className={`${
+                    compactFont ? 'text-[7px]' : 'text-[7.8px]'
+                  } text-slate-600 truncate max-w-[120px]`}
+                >
                   {t.title || 'Ders Öğretmeni'}
                 </div>
-                <div className="text-[6.8px] text-slate-400 mt-1.5">İmza: ..................</div>
+                <div className={`${compactFont ? 'text-[6.8px]' : 'text-[7.6px]'} text-slate-400 mt-1.5`}>
+                  İmza: ..................
+                </div>
               </div>
             ))}
           </div>
@@ -202,6 +257,7 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
   const [printData, setPrintData] = useState<PrintDataResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [filledMode, setFilledMode] = useState<boolean>(true);
+  const [compactFont, setCompactFont] = useState<boolean>(false);
   const [dateLabel, setDateLabel] = useState<string>(
     new Date().toLocaleDateString('tr-TR')
   );
@@ -304,7 +360,7 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
           </button>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Sınıf</label>
             <select
@@ -356,6 +412,30 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
                 }`}
               >
                 Boş Form
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Yazı Boyutu</label>
+            <div className="grid grid-cols-2 rounded-lg border border-slate-300 overflow-hidden text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setCompactFont(false)}
+                className={`py-2 cursor-pointer ${
+                  !compactFont ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'
+                }`}
+              >
+                Büyük
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompactFont(true)}
+                className={`py-2 cursor-pointer ${
+                  compactFont ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'
+                }`}
+              >
+                Kompakt
               </button>
             </div>
           </div>
@@ -521,6 +601,7 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
                 data={printData}
                 signatureTeachers={signatureTeachers}
                 filledMode={filledMode}
+                compactFont={compactFont}
                 dateLabel={dateLabel}
               />
 
@@ -532,6 +613,7 @@ export const PrintPage: React.FC<PrintPageProps> = ({ courses }) => {
                   data={printData}
                   signatureTeachers={signatureTeachers}
                   filledMode={filledMode}
+                  compactFont={compactFont}
                   dateLabel={dateLabel}
                 />
               ) : (
