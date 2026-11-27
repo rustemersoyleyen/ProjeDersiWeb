@@ -1,19 +1,33 @@
 <?php
 /**
- * Sınıflar, Sınıf-Ders Öğretmen Atamaları, Projeler ve Öğrenciler Endpoint'leri
+ * Sınıflar (Öğretmen Kapsamlı), Sınıf-Ders Öğretmen Atamaları, Projeler,
+ * Öğrenciler ve Proje Bazlı Opsiyonel Özel Ödev + Başlangıç Hayali Endpoint'leri
  */
 
 function pd_handle_classes(string $method): void {
     $pdo = pd_db();
 
     if ($method === 'GET') {
-        pd_require_auth();
-        $classes = $pdo->query(
-            'SELECT c.id, c.name, c.academic_year, c.school_name, c.created_at,
-                    (SELECT COUNT(*) FROM pd_students s WHERE s.class_id = c.id) AS student_count
-             FROM pd_classes c
-             ORDER BY c.academic_year DESC, c.name ASC'
-        )->fetchAll();
+        $user = pd_require_auth();
+        $allowedClassIds = pd_allowed_class_ids($user);
+
+        if ($allowedClassIds !== null && empty($allowedClassIds)) {
+            pd_json_response([]);
+        }
+
+        $sql = 'SELECT c.id, c.name, c.academic_year, c.school_name, c.created_at,
+                       (SELECT COUNT(*) FROM pd_students s WHERE s.class_id = c.id) AS student_count
+                FROM pd_classes c';
+        $params = [];
+        if ($allowedClassIds !== null) {
+            $in = implode(',', array_fill(0, count($allowedClassIds), '?'));
+            $sql .= " WHERE c.id IN ($in)";
+            $params = $allowedClassIds;
+        }
+        $sql .= ' ORDER BY c.academic_year DESC, c.name ASC';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $classes = $stmt->fetchAll();
 
         $ctRows = $pdo->query(
             'SELECT cct.class_id, cct.course_id, cct.teacher_id, cct.sort_order,
@@ -59,11 +73,27 @@ function pd_handle_classes(string $method): void {
             'INSERT INTO pd_classes (name, academic_year, school_name, created_by) VALUES (?, ?, ?, ?)'
         );
         $stmt->execute([$name, $academicYear, $schoolName, $user['id']]);
-        pd_json_response(['ok' => true, 'id' => (int)$pdo->lastInsertId()], 201);
+        $newClassId = (int)$pdo->lastInsertId();
+
+        // Öğretmen kendi sınıf oluşturursa mevcut derslerine otomatik yetki ekle
+        if ($user['role'] === 'teacher') {
+            $myCourses = pd_allowed_course_ids($user);
+            if (empty($myCourses)) {
+                $myCourses = array_map(fn($r) => (int)$r['id'], $pdo->query('SELECT id FROM pd_courses')->fetchAll());
+            }
+            $ins = $pdo->prepare(
+                'INSERT IGNORE INTO pd_class_course_teachers (class_id, course_id, teacher_id, sort_order) VALUES (?, ?, ?, 1)'
+            );
+            foreach ($myCourses as $cid) {
+                $ins->execute([$newClassId, $cid, $user['id']]);
+            }
+        }
+
+        pd_json_response(['ok' => true, 'id' => $newClassId], 201);
     }
 
     if ($method === 'PUT') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $b = pd_get_json_body();
         $id = (int)($b['id'] ?? 0);
         $name = trim((string)($b['name'] ?? ''));
@@ -73,6 +103,7 @@ function pd_handle_classes(string $method): void {
         if ($id <= 0 || $name === '') {
             pd_json_response(['error' => 'Geçersiz sınıf bilgisi.'], 400);
         }
+        pd_assert_can_access($user, $id);
 
         $stmt = $pdo->prepare('UPDATE pd_classes SET name = ?, academic_year = ?, school_name = ? WHERE id = ?');
         $stmt->execute([$name, $academicYear, $schoolName, $id]);
@@ -80,11 +111,12 @@ function pd_handle_classes(string $method): void {
     }
 
     if ($method === 'DELETE') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $id = (int)($_GET['id'] ?? (pd_get_json_body()['id'] ?? 0));
         if ($id <= 0) {
             pd_json_response(['error' => 'Geçersiz sınıf ID.'], 400);
         }
+        pd_assert_can_access($user, $id);
         $stmt = $pdo->prepare('DELETE FROM pd_classes WHERE id = ?');
         $stmt->execute([$id]);
         pd_json_response(['ok' => true]);
@@ -98,7 +130,7 @@ function pd_handle_class_teachers(string $method): void {
     if ($method !== 'POST') {
         pd_json_response(['error' => 'Yalnızca POST desteklenir.'], 405);
     }
-    pd_require_auth();
+    pd_require_admin();
     $b = pd_get_json_body();
     $classId = (int)($b['class_id'] ?? 0);
     $courseId = (int)($b['course_id'] ?? 0);
@@ -153,7 +185,6 @@ function pd_handle_projects(string $method): void {
         pd_require_auth();
         $b = pd_get_json_body();
 
-        // Toplu proje ekleme desteği
         if (isset($b['items']) && is_array($b['items'])) {
             $ins = $pdo->prepare('INSERT INTO pd_projects (title, description) VALUES (?, ?)');
             $count = 0;
@@ -210,8 +241,16 @@ function pd_handle_students(string $method): void {
     $pdo = pd_db();
 
     if ($method === 'GET') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $classId = (int)($_GET['class_id'] ?? 0);
+        $allowedClassIds = pd_allowed_class_ids($user);
+
+        if ($classId > 0) {
+            pd_assert_can_access($user, $classId);
+        } elseif ($allowedClassIds !== null && empty($allowedClassIds)) {
+            pd_json_response([]);
+        }
+
         $sql = 'SELECT s.id, s.class_id, s.student_no, s.full_name, s.project_id,
                        p.title AS project_title, c.name AS class_name
                 FROM pd_students s
@@ -221,25 +260,30 @@ function pd_handle_students(string $method): void {
         if ($classId > 0) {
             $sql .= ' WHERE s.class_id = ?';
             $params[] = $classId;
+        } elseif ($allowedClassIds !== null) {
+            $in = implode(',', array_fill(0, count($allowedClassIds), '?'));
+            $sql .= " WHERE s.class_id IN ($in)";
+            $params = $allowedClassIds;
         }
         $sql .= ' ORDER BY CAST(s.student_no AS UNSIGNED) ASC, s.student_no ASC, s.full_name ASC';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $students = $stmt->fetchAll();
 
-        // Öğrencilerin tüm derslerdeki notları ve atanan soru sayıları
         $evalMap = [];
         $qCountMap = [];
+        $cpMap = [];
         if (!empty($students)) {
             $ids = array_map(fn($r) => (int)$r['id'], $students);
             $in = implode(',', array_fill(0, count($ids), '?'));
 
-            $evStmt = $pdo->prepare("SELECT student_id, course_id, total_score, rubric_total, question_total FROM pd_evaluations WHERE student_id IN ($in)");
+            $evStmt = $pdo->prepare("SELECT student_id, course_id, total_score, rubric_total, weekly_total, question_total FROM pd_evaluations WHERE student_id IN ($in)");
             $evStmt->execute($ids);
             foreach ($evStmt->fetchAll() as $ev) {
                 $evalMap[(int)$ev['student_id']][(int)$ev['course_id']] = [
                     'total_score' => (float)$ev['total_score'],
                     'rubric_total' => (float)$ev['rubric_total'],
+                    'weekly_total' => (float)$ev['weekly_total'],
                     'question_total' => (float)$ev['question_total'],
                 ];
             }
@@ -248,6 +292,23 @@ function pd_handle_students(string $method): void {
             $qStmt->execute($ids);
             foreach ($qStmt->fetchAll() as $qr) {
                 $qCountMap[(int)$qr['student_id']][(int)$qr['course_id']] = (int)$qr['cnt'];
+            }
+
+            $cpStmt = $pdo->prepare(
+                "SELECT scp.student_id, scp.course_id, scp.project_id, scp.custom_title, scp.initial_vision_note,
+                        p.title AS project_title
+                 FROM pd_student_course_projects scp
+                 LEFT JOIN pd_projects p ON p.id = scp.project_id
+                 WHERE scp.student_id IN ($in)"
+            );
+            $cpStmt->execute($ids);
+            foreach ($cpStmt->fetchAll() as $cp) {
+                $cpMap[(int)$cp['student_id']][(int)$cp['course_id']] = [
+                    'project_id' => $cp['project_id'] !== null ? (int)$cp['project_id'] : null,
+                    'project_title' => $cp['project_title'],
+                    'custom_title' => $cp['custom_title'],
+                    'initial_vision_note' => $cp['initial_vision_note'],
+                ];
             }
         }
 
@@ -258,19 +319,20 @@ function pd_handle_students(string $method): void {
             $s['project_id'] = $s['project_id'] !== null ? (int)$s['project_id'] : null;
             $s['evaluations'] = $evalMap[$sid] ?? new stdClass();
             $s['question_counts'] = $qCountMap[$sid] ?? new stdClass();
+            $s['course_projects'] = $cpMap[$sid] ?? new stdClass();
         }
         pd_json_response($students);
     }
 
     if ($method === 'POST') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $b = pd_get_json_body();
         $classId = (int)($b['class_id'] ?? 0);
         if ($classId <= 0) {
             pd_json_response(['error' => 'Sınıf seçilmelidir.'], 400);
         }
+        pd_assert_can_access($user, $classId);
 
-        // Toplu içe aktarma (CSV / Excel / PDF)
         if (isset($b['students']) && is_array($b['students'])) {
             $upsert = $pdo->prepare(
                 'INSERT INTO pd_students (class_id, student_no, full_name, project_id)
@@ -312,7 +374,6 @@ function pd_handle_students(string $method): void {
             }
         }
 
-        // Tekil öğrenci ekleme
         $studentNo = trim((string)($b['student_no'] ?? ''));
         $fullName = trim((string)($b['full_name'] ?? ''));
         $projectId = isset($b['project_id']) && (int)$b['project_id'] > 0 ? (int)$b['project_id'] : null;
@@ -333,14 +394,20 @@ function pd_handle_students(string $method): void {
     }
 
     if ($method === 'PUT') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $b = pd_get_json_body();
         $id = (int)($b['id'] ?? 0);
         if ($id <= 0) {
             pd_json_response(['error' => 'Geçersiz öğrenci ID.'], 400);
         }
 
-        // Sadece proje ataması güncellemesi
+        $clsStmt = $pdo->prepare('SELECT class_id FROM pd_students WHERE id = ?');
+        $clsStmt->execute([$id]);
+        $clsId = (int)$clsStmt->fetchColumn();
+        if ($clsId > 0) {
+            pd_assert_can_access($user, $clsId);
+        }
+
         if (array_key_exists('project_id', $b) && !isset($b['full_name']) && !isset($b['student_no'])) {
             $projectId = $b['project_id'] !== null && (int)$b['project_id'] > 0 ? (int)$b['project_id'] : null;
             $stmt = $pdo->prepare('UPDATE pd_students SET project_id = ? WHERE id = ?');
@@ -361,10 +428,16 @@ function pd_handle_students(string $method): void {
     }
 
     if ($method === 'DELETE') {
-        pd_require_auth();
+        $user = pd_require_auth();
         $id = (int)($_GET['id'] ?? (pd_get_json_body()['id'] ?? 0));
         if ($id <= 0) {
             pd_json_response(['error' => 'Geçersiz öğrenci ID.'], 400);
+        }
+        $clsStmt = $pdo->prepare('SELECT class_id FROM pd_students WHERE id = ?');
+        $clsStmt->execute([$id]);
+        $clsId = (int)$clsStmt->fetchColumn();
+        if ($clsId > 0) {
+            pd_assert_can_access($user, $clsId);
         }
         $stmt = $pdo->prepare('DELETE FROM pd_students WHERE id = ?');
         $stmt->execute([$id]);
@@ -372,4 +445,91 @@ function pd_handle_students(string $method): void {
     }
 
     pd_json_response(['error' => 'Desteklenmeyen yöntem.'], 405);
+}
+
+/**
+ * Proje Bazlı Opsiyonel Ayrı Ödev / Proje Adı ve Başlangıç Hayali Notu
+ */
+function pd_handle_student_course_projects(string $method): void {
+    if ($method !== 'POST' && $method !== 'PUT') {
+        pd_json_response(['error' => 'Yalnızca POST/PUT desteklenir.'], 405);
+    }
+    $user = pd_require_auth();
+    $pdo = pd_db();
+    $b = pd_get_json_body();
+    $courseId = (int)($b['course_id'] ?? 0);
+    if ($courseId <= 0) {
+        pd_json_response(['error' => 'Uygulama/ders seçilmelidir.'], 400);
+    }
+
+    $upsert = $pdo->prepare(
+        'INSERT INTO pd_student_course_projects (student_id, course_id, project_id, custom_title, initial_vision_note)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           project_id = VALUES(project_id),
+           custom_title = VALUES(custom_title),
+           initial_vision_note = VALUES(initial_vision_note)'
+    );
+
+    // Tüm sınıfa toplu proje/ödev adı atama
+    if (!empty($b['class_id'])) {
+        $classId = (int)$b['class_id'];
+        pd_assert_can_access($user, $classId, $courseId);
+        $projectId = isset($b['project_id']) && (int)$b['project_id'] > 0 ? (int)$b['project_id'] : null;
+        $customTitle = trim((string)($b['custom_title'] ?? ''));
+
+        $stStmt = $pdo->prepare('SELECT id FROM pd_students WHERE class_id = ?');
+        $stStmt->execute([$classId]);
+        $studentIds = array_map(fn($r) => (int)$r['id'], $stStmt->fetchAll());
+
+        $curStmt = $pdo->prepare('SELECT initial_vision_note FROM pd_student_course_projects WHERE student_id = ? AND course_id = ?');
+        $pdo->beginTransaction();
+        try {
+            foreach ($studentIds as $sid) {
+                $curStmt->execute([$sid, $courseId]);
+                $existingVision = $curStmt->fetchColumn();
+                $upsert->execute([
+                    $sid,
+                    $courseId,
+                    $projectId,
+                    $customTitle !== '' ? $customTitle : null,
+                    $existingVision !== false ? $existingVision : null,
+                ]);
+            }
+            $pdo->commit();
+            pd_json_response(['ok' => true, 'updated' => count($studentIds)]);
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            pd_json_response(['error' => 'Toplu ödev adı ataması başarısız.'], 500);
+        }
+    }
+
+    // Tekil öğrenci güncelleme
+    $studentId = (int)($b['student_id'] ?? 0);
+    if ($studentId <= 0) {
+        pd_json_response(['error' => 'Öğrenci seçilmelidir.'], 400);
+    }
+    $clsStmt = $pdo->prepare('SELECT class_id FROM pd_students WHERE id = ?');
+    $clsStmt->execute([$studentId]);
+    $clsId = (int)$clsStmt->fetchColumn();
+    if ($clsId > 0) {
+        pd_assert_can_access($user, $clsId, $courseId);
+    }
+
+    $curStmt = $pdo->prepare('SELECT project_id, custom_title, initial_vision_note FROM pd_student_course_projects WHERE student_id = ? AND course_id = ?');
+    $curStmt->execute([$studentId, $courseId]);
+    $cur = $curStmt->fetch() ?: ['project_id' => null, 'custom_title' => null, 'initial_vision_note' => null];
+
+    $projectId = array_key_exists('project_id', $b)
+        ? ($b['project_id'] !== null && (int)$b['project_id'] > 0 ? (int)$b['project_id'] : null)
+        : ($cur['project_id'] !== null ? (int)$cur['project_id'] : null);
+    $customTitle = array_key_exists('custom_title', $b)
+        ? (trim((string)$b['custom_title']) !== '' ? trim((string)$b['custom_title']) : null)
+        : $cur['custom_title'];
+    $visionNote = array_key_exists('initial_vision_note', $b)
+        ? (trim((string)$b['initial_vision_note']) !== '' ? trim((string)$b['initial_vision_note']) : null)
+        : $cur['initial_vision_note'];
+
+    $upsert->execute([$studentId, $courseId, $projectId, $customTitle, $visionNote]);
+    pd_json_response(['ok' => true]);
 }

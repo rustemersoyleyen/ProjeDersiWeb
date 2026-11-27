@@ -7,6 +7,7 @@ import {
   ListChecks,
   HelpCircle,
   ClipboardCheck,
+  CalendarCheck,
   Printer,
   Settings,
   LogOut,
@@ -15,7 +16,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { api } from './api/client';
-import type { Course, Outcome, SettingsMap, User } from './types';
+import type { Course, Outcome, SettingsMap, Subject, User } from './types';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { TeachersPage } from './pages/TeachersPage';
@@ -23,6 +24,7 @@ import { ClassesPage } from './pages/ClassesPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { CriteriaPage } from './pages/CriteriaPage';
 import { QuestionsPage } from './pages/QuestionsPage';
+import { WeeklyTrackingPage } from './pages/WeeklyTrackingPage';
 import { EvaluatePage } from './pages/EvaluatePage';
 import { PrintPage } from './pages/PrintPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -34,6 +36,7 @@ type TabKey =
   | 'projects'
   | 'criteria'
   | 'questions'
+  | 'weekly'
   | 'evaluate'
   | 'print'
   | 'settings';
@@ -42,6 +45,7 @@ export const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SettingsMap>({});
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
@@ -58,6 +62,7 @@ export const App: React.FC = () => {
       if (res.authenticated && res.user) {
         setUser(res.user);
         setSettings(res.settings ?? {});
+        setSubjects(res.subjects ?? []);
         setCourses(res.courses ?? []);
         setOutcomes(res.outcomes ?? []);
       } else {
@@ -98,10 +103,11 @@ export const App: React.FC = () => {
     { key: 'projects', label: 'Proje İsimleri', icon: FolderKanban },
     { key: 'teachers', label: 'Ders Öğretmenleri', icon: Users },
     { key: 'criteria', label: 'Kazanım & Rubik', icon: ListChecks },
-    { key: 'questions', label: 'Teknik Soru Havuzu', icon: HelpCircle },
-    { key: 'evaluate', label: 'Rubik Değerlendirme', icon: ClipboardCheck },
+    { key: 'questions', label: 'Soru Havuzu (3 Tip)', icon: HelpCircle },
+    { key: 'weekly', label: 'Haftalık Takip', icon: CalendarCheck },
+    { key: 'evaluate', label: 'Değerlendirme', icon: ClipboardCheck },
     { key: 'print', label: 'A4 Çıktı (2 Öğrenci)', icon: Printer },
-    { key: 'settings', label: 'Ayarlar & Şifre', icon: Settings },
+    { key: 'settings', label: 'Dersler & Ayarlar', icon: Settings },
   ];
 
   const handleNavigateEvaluate = (classId: number, courseId: number, studentId?: number) => {
@@ -111,7 +117,6 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Sol Kenar Menüsü (Yazdırırken Gizlenir) */}
       <aside
         className={`no-print fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-200 flex flex-col transform transition-transform lg:translate-x-0 lg:static ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -124,7 +129,7 @@ export const App: React.FC = () => {
             </div>
             <div>
               <div className="font-bold text-sm text-white leading-tight">Proje Değerlendirme</div>
-              <div className="text-[11px] text-slate-400">Rubik &amp; Soru Sistemi</div>
+              <div className="text-[11px] text-slate-400">Rubik · Haftalık · Soru v2</div>
             </div>
           </div>
           <button
@@ -175,7 +180,6 @@ export const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Mobil Üst Çubuk */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="no-print lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
           <button
@@ -207,17 +211,27 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'dashboard' && (
-            <DashboardPage onNavigateEvaluate={handleNavigateEvaluate} />
+            <DashboardPage subjects={subjects} onNavigateEvaluate={handleNavigateEvaluate} />
           )}
-          {activeTab === 'teachers' && <TeachersPage currentUser={user} courses={courses} />}
-          {activeTab === 'classes' && <ClassesPage settings={settings} />}
+          {activeTab === 'teachers' && (
+            <TeachersPage
+              currentUser={user}
+              courses={courses}
+              onRefreshBootstrap={bootstrap}
+            />
+          )}
+          {activeTab === 'classes' && <ClassesPage settings={settings} courses={courses} />}
           {activeTab === 'projects' && <ProjectsPage />}
           {activeTab === 'criteria' && (
             <CriteriaPage courses={courses} onCoursesChanged={bootstrap} />
           )}
           {activeTab === 'questions' && <QuestionsPage courses={courses} />}
+          {activeTab === 'weekly' && (
+            <WeeklyTrackingPage courses={courses} onCoursesChanged={bootstrap} />
+          )}
           {activeTab === 'evaluate' && (
             <EvaluatePage
+              subjects={subjects}
               courses={courses}
               outcomes={outcomes}
               initialSelection={evalTarget}
@@ -228,6 +242,7 @@ export const App: React.FC = () => {
             <SettingsPage
               user={user}
               settings={settings}
+              subjects={subjects}
               courses={courses}
               onRefresh={bootstrap}
             />

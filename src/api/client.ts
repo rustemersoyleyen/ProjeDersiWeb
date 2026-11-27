@@ -4,16 +4,24 @@ import type {
   Course,
   Criterion,
   EvaluationData,
+  EvaluationMode,
   MatrixResponse,
   Outcome,
   PrintDataResponse,
   Project,
   Question,
+  QuestionType,
   RubricLevel,
   SettingsMap,
   Student,
   StudentQuestion,
+  Subject,
+  SubjectModelType,
+  TeacherAssignment,
   User,
+  WeeklyScoresResponse,
+  WeeklyStatus,
+  WeeklyTask,
 } from '../types';
 
 const STORAGE_API_KEY = 'pd_api_base';
@@ -77,7 +85,6 @@ async function request<T>(
   const qs = new URLSearchParams();
   qs.set('route', route);
 
-  // Windows IIS (PleskWin) uyumluluğu: PUT/DELETE isteklerini POST + _method ile gönder
   const fetchMethod = upperMethod === 'GET' ? 'GET' : 'POST';
   if (upperMethod === 'PUT' || upperMethod === 'DELETE') {
     qs.set('_method', upperMethod);
@@ -96,7 +103,6 @@ async function request<T>(
     });
   }
 
-  // CORS simple request (IIS OPTIONS preflight engeline takılmaz)
   const headers: Record<string, string> = {};
   if (body !== undefined) {
     headers['Content-Type'] = 'text/plain;charset=UTF-8';
@@ -190,6 +196,7 @@ export const api = {
     branch: string;
     title: string;
     role: 'admin' | 'teacher';
+    assignments?: TeacherAssignment[];
   }) => request<{ ok: boolean; id: number }>('/users', { method: 'POST', body: payload }),
   updateUser: (payload: {
     id: number;
@@ -199,25 +206,55 @@ export const api = {
     role: 'admin' | 'teacher';
     is_active: number;
     password?: string;
+    assignments?: TeacherAssignment[];
   }) => request<{ ok: boolean }>('/users', { method: 'PUT', body: payload }),
   deleteUser: (id: number) =>
     request<{ ok: boolean }>('/users', { method: 'DELETE', params: { id } }),
 
-  // Courses
-  getCourses: () => request<Course[]>('/courses'),
+  // Subjects (Ana Dersler)
+  getSubjects: () => request<Subject[]>('/subjects'),
+  createSubject: (payload: {
+    name: string;
+    code: string;
+    model_type: SubjectModelType;
+    description?: string;
+    sort_order?: number;
+  }) => request<{ ok: boolean; id: number }>('/subjects', { method: 'POST', body: payload }),
+  updateSubject: (payload: {
+    id: number;
+    name: string;
+    code: string;
+    model_type: SubjectModelType;
+    description?: string;
+    sort_order?: number;
+  }) => request<{ ok: boolean }>('/subjects', { method: 'PUT', body: payload }),
+  deleteSubject: (id: number) =>
+    request<{ ok: boolean }>('/subjects', { method: 'DELETE', params: { id } }),
+
+  // Courses (Uygulamalar / Projeler / Ödevler)
+  getCourses: (subject_id?: number) =>
+    request<Course[]>('/courses', { params: { subject_id } }),
   createCourse: (payload: {
+    subject_id: number;
     name: string;
     short_code: string;
     description?: string;
     question_points: number;
+    evaluation_mode: EvaluationMode;
+    final_completion_points?: number;
+    final_report_points?: number;
     sort_order: number;
   }) => request<{ ok: boolean; id: number }>('/courses', { method: 'POST', body: payload }),
   updateCourse: (payload: {
     id: number;
+    subject_id?: number;
     name: string;
     short_code: string;
     description?: string;
     question_points: number;
+    evaluation_mode?: EvaluationMode;
+    final_completion_points?: number;
+    final_report_points?: number;
     sort_order: number;
   }) => request<{ ok: boolean }>('/courses', { method: 'PUT', body: payload }),
   deleteCourse: (id: number) =>
@@ -248,7 +285,7 @@ export const api = {
   deleteProject: (id: number) =>
     request<{ ok: boolean }>('/projects', { method: 'DELETE', params: { id } }),
 
-  // Students
+  // Students & Per-Course Project Overrides + Vision Note
   getStudents: (class_id?: number) =>
     request<Student[]>('/students', { params: { class_id } }),
   createStudent: (payload: {
@@ -274,6 +311,19 @@ export const api = {
   deleteStudent: (id: number) =>
     request<{ ok: boolean }>('/students', { method: 'DELETE', params: { id } }),
 
+  saveStudentCourseProject: (payload: {
+    course_id: number;
+    student_id?: number;
+    class_id?: number;
+    project_id?: number | null;
+    custom_title?: string | null;
+    initial_vision_note?: string | null;
+  }) =>
+    request<{ ok: boolean; updated?: number }>('/student-course-projects', {
+      method: 'POST',
+      body: payload,
+    }),
+
   // Criteria & Outcomes
   getCriteria: (course_id: number) =>
     request<{ outcomes: Outcome[]; criteria: Criterion[] }>('/criteria', {
@@ -298,27 +348,35 @@ export const api = {
   deleteCriterion: (id: number) =>
     request<{ ok: boolean }>('/criteria', { method: 'DELETE', params: { id } }),
 
-  // Questions
+  // Questions (3 Kategorili)
   getQuestions: (course_id: number) =>
     request<Question[]>('/questions', { params: { course_id } }),
   createQuestion: (payload: {
     course_id: number;
     question_text: string;
     difficulty: 'kolay' | 'orta' | 'zor';
+    question_type: QuestionType;
     expected_hint?: string;
   }) => request<{ ok: boolean; id: number }>('/questions', { method: 'POST', body: payload }),
   bulkCreateQuestions: (
     course_id: number,
-    items: Array<{ question_text: string; difficulty?: 'kolay' | 'orta' | 'zor'; expected_hint?: string }>
+    question_type: QuestionType,
+    items: Array<{
+      question_text: string;
+      difficulty?: 'kolay' | 'orta' | 'zor';
+      question_type?: QuestionType;
+      expected_hint?: string;
+    }>
   ) =>
     request<{ ok: boolean; inserted: number }>('/questions', {
       method: 'POST',
-      body: { course_id, items },
+      body: { course_id, question_type, items },
     }),
   updateQuestion: (payload: {
     id: number;
     question_text: string;
     difficulty: 'kolay' | 'orta' | 'zor';
+    question_type: QuestionType;
     expected_hint?: string;
   }) => request<{ ok: boolean }>('/questions', { method: 'PUT', body: payload }),
   deleteQuestion: (id: number) =>
@@ -343,6 +401,53 @@ export const api = {
       body: { student_question_id, new_question_id },
     }),
 
+  // Weekly Tasks & Scores
+  getWeeklyTasks: (course_id: number) =>
+    request<WeeklyTask[]>('/weekly-tasks', { params: { course_id } }),
+  createWeeklyTask: (payload: {
+    course_id: number;
+    week_no: number;
+    title: string;
+    description?: string;
+    max_score: number;
+    due_date?: string;
+  }) => request<{ ok: boolean; id: number }>('/weekly-tasks', { method: 'POST', body: payload }),
+  bulkCreateWeeklyTasks: (
+    course_id: number,
+    items: Array<{ week_no: number; title: string; max_score: number; description?: string; due_date?: string }>
+  ) =>
+    request<{ ok: boolean; inserted: number }>('/weekly-tasks', {
+      method: 'POST',
+      body: { course_id, items },
+    }),
+  updateWeeklyTask: (payload: {
+    id: number;
+    week_no: number;
+    title: string;
+    description?: string;
+    max_score: number;
+    due_date?: string;
+  }) => request<{ ok: boolean }>('/weekly-tasks', { method: 'PUT', body: payload }),
+  deleteWeeklyTask: (id: number) =>
+    request<{ ok: boolean }>('/weekly-tasks', { method: 'DELETE', params: { id } }),
+
+  getWeeklyScores: (class_id: number, course_id: number) =>
+    request<WeeklyScoresResponse>('/weekly-scores', { params: { class_id, course_id } }),
+  saveWeeklyScores: (
+    course_id: number,
+    items: Array<{
+      student_id: number;
+      weekly_task_id: number;
+      status: WeeklyStatus;
+      score: number;
+      note?: string;
+    }>
+  ) =>
+    request<{ ok: boolean; saved: number }>('/weekly-scores', {
+      method: 'POST',
+      body: { course_id, items },
+    }),
+
   // Evaluations, Matrix & Print
   getEvaluation: (student_id: number, course_id: number) =>
     request<EvaluationData>('/evaluations', { params: { student_id, course_id } }),
@@ -350,6 +455,9 @@ export const api = {
     student_id: number;
     course_id: number;
     notes: string;
+    initial_vision_note?: string;
+    final_completion_score?: number | null;
+    final_report_score?: number | null;
     criteria_scores: Array<{ criterion_id: number; selected_level: number | null; score: number }>;
     question_scores: Array<{ id: number; score: number | null; note?: string }>;
   }) =>
@@ -357,12 +465,13 @@ export const api = {
       ok: boolean;
       evaluation_id: number;
       rubric_total: number;
+      weekly_total: number;
       question_total: number;
       total_score: number;
     }>('/evaluations', { method: 'POST', body: payload }),
 
-  getMatrix: (class_id?: number) =>
-    request<MatrixResponse>('/matrix', { params: { class_id } }),
+  getMatrix: (class_id?: number, subject_id?: number) =>
+    request<MatrixResponse>('/matrix', { params: { class_id, subject_id } }),
   getPrintData: (class_id: number, course_id: number) =>
     request<PrintDataResponse>('/print-data', { params: { class_id, course_id } }),
 };

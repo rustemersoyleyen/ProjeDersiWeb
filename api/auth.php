@@ -1,7 +1,6 @@
 <?php
 /**
- * Oturum Yönetimi (HMAC-SHA256 İmzalı Token + PHP Session Çerez Desteği)
- * GitHub Pages -> kiracbilisim.net çapraz alan adı kullanımında %100 güvenilir çalışır.
+ * Oturum Yönetimi (HMAC-SHA256 İmzalı Token + PHP Session) ve Öğretmen Sınıf/Ders Kapsam Kontrolü
  */
 
 function pd_token_secret(): string {
@@ -9,7 +8,6 @@ function pd_token_secret(): string {
     if (!empty($cfg['token_secret'])) {
         return (string)$cfg['token_secret'];
     }
-    // config.php'de token_secret yoksa DB kimliğinden türetilmiş kararlı gizli anahtar
     return hash('sha256', ($cfg['db_name'] ?? '') . '|' . ($cfg['db_user'] ?? '') . '|' . ($cfg['db_pass'] ?? '') . '|pd_rubrik_v1');
 }
 
@@ -28,7 +26,7 @@ function pd_base64url_decode(string $data): string {
 function pd_issue_token(int $userId): string {
     $payload = json_encode([
         'uid' => $userId,
-        'exp' => time() + (60 * 60 * 12), // 12 saat geçerli
+        'exp' => time() + (60 * 60 * 12),
     ]);
     $encoded = pd_base64url_encode((string)$payload);
     $sig = pd_base64url_encode(hash_hmac('sha256', $encoded, pd_token_secret(), true));
@@ -36,15 +34,12 @@ function pd_issue_token(int $userId): string {
 }
 
 function pd_extract_token(): ?string {
-    // 1. Öncelik: HTTPS query parametresi (_token) — IIS CORS preflight (OPTIONS) gerektirmez
     if (!empty($_GET['_token'])) {
         return trim((string)$_GET['_token']);
     }
-    // 2. Öncelik: X-Auth-Token başlığı
     if (!empty($_SERVER['HTTP_X_AUTH_TOKEN'])) {
         return trim((string)$_SERVER['HTTP_X_AUTH_TOKEN']);
     }
-    // 2. Öncelik: Authorization: Bearer <token>
     $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
     if ($auth === '' && function_exists('apache_request_headers')) {
         $headers = apache_request_headers();
@@ -148,6 +143,61 @@ function pd_require_admin(): array {
     return $user;
 }
 
+/**
+ * Öğretmenin atandığı (class_id, course_id) çiftlerini döndürür.
+ */
+function pd_teacher_assignments(int $userId): array {
+    $pdo = pd_db();
+    $stmt = $pdo->prepare(
+        'SELECT class_id, course_id FROM pd_class_course_teachers WHERE teacher_id = ?'
+    );
+    $stmt->execute([$userId]);
+    $rows = $stmt->fetchAll();
+    return array_map(fn($r) => [
+        'class_id' => (int)$r['class_id'],
+        'course_id' => (int)$r['course_id'],
+    ], $rows);
+}
+
+/**
+ * Admin için null (tümü), öğretmen için yetkili olduğu class_id dizisini döndürür.
+ */
+function pd_allowed_class_ids(array $user): ?array {
+    if ($user['role'] === 'admin') {
+        return null;
+    }
+    $pairs = pd_teacher_assignments($user['id']);
+    $ids = array_values(array_unique(array_map(fn($p) => $p['class_id'], $pairs)));
+    return $ids;
+}
+
+/**
+ * Admin için null (tümü), öğretmen için yetkili olduğu course_id dizisini döndürür.
+ */
+function pd_allowed_course_ids(array $user, ?int $classId = null): ?array {
+    if ($user['role'] === 'admin') {
+        return null;
+    }
+    $pairs = pd_teacher_assignments($user['id']);
+    if ($classId !== null && $classId > 0) {
+        $pairs = array_filter($pairs, fn($p) => $p['class_id'] === $classId);
+    }
+    return array_values(array_unique(array_map(fn($p) => $p['course_id'], $pairs)));
+}
+
+function pd_assert_can_access(array $user, int $classId, ?int $courseId = null): void {
+    if ($user['role'] === 'admin') {
+        return;
+    }
+    $pairs = pd_teacher_assignments($user['id']);
+    foreach ($pairs as $p) {
+        if ($p['class_id'] === $classId && ($courseId === null || $p['course_id'] === $courseId)) {
+            return;
+        }
+    }
+    pd_json_response(['error' => 'Bu sınıf veya derse erişim yetkiniz bulunmuyor.'], 403);
+}
+
 function pd_handle_auth(string $action, string $method): void {
     $pdo = pd_db();
 
@@ -156,18 +206,64 @@ function pd_handle_auth(string $action, string $method): void {
         if (!$user) {
             pd_json_response(['authenticated' => false, 'user' => null]);
         }
+
         $settingsRows = $pdo->query('SELECT setting_key, setting_value FROM pd_settings')->fetchAll();
         $settings = [];
         foreach ($settingsRows as $r) {
             $settings[$r['setting_key']] = $r['setting_value'];
         }
-        $courses = $pdo->query('SELECT id, name, short_code, description, question_points, sort_order FROM pd_courses ORDER BY sort_order ASC, id ASC')->fetchAll();
+
+        $subjects = $pdo->query(
+            'SELECT id, name, code, model_type, description, sort_order, is_active
+             FROM pd_subjects WHERE is_active = 1 ORDER BY sort_order ASC, id ASC'
+        )->fetchAll();
+        foreach ($subjects as &$s) {
+            $s['id'] = (int)$s['id'];
+            $s['sort_order'] = (int)$s['sort_order'];
+            $s['is_active'] = (int)$s['is_active'];
+        }
+
+        $allowedCourseIds = pd_allowed_course_ids($user);
+        $assignments = $user['role'] === 'teacher' ? pd_teacher_assignments($user['id']) : [];
+
+        if ($allowedCourseIds === null) {
+            $courses = $pdo->query(
+                'SELECT id, subject_id, name, short_code, description, question_points,
+                        evaluation_mode, final_completion_points, final_report_points, sort_order
+                 FROM pd_courses ORDER BY subject_id ASC, sort_order ASC, id ASC'
+            )->fetchAll();
+        } elseif (empty($allowedCourseIds)) {
+            $courses = [];
+        } else {
+            $in = implode(',', array_fill(0, count($allowedCourseIds), '?'));
+            $cStmt = $pdo->prepare(
+                "SELECT id, subject_id, name, short_code, description, question_points,
+                        evaluation_mode, final_completion_points, final_report_points, sort_order
+                 FROM pd_courses WHERE id IN ($in) ORDER BY subject_id ASC, sort_order ASC, id ASC"
+            );
+            $cStmt->execute($allowedCourseIds);
+            $courses = $cStmt->fetchAll();
+        }
+
         foreach ($courses as &$c) {
             $c['id'] = (int)$c['id'];
+            $c['subject_id'] = (int)$c['subject_id'];
             $c['question_points'] = (int)$c['question_points'];
+            $c['final_completion_points'] = (int)$c['final_completion_points'];
+            $c['final_report_points'] = (int)$c['final_report_points'];
             $c['sort_order'] = (int)$c['sort_order'];
         }
-        $outcomes = $pdo->query('SELECT id, code, name, description, default_weight, is_question_outcome, sort_order FROM pd_outcomes ORDER BY sort_order ASC, id ASC')->fetchAll();
+
+        // Öğretmen yalnızca kendi derslerinin bağlı olduğu ana dersleri görsün
+        if ($user['role'] === 'teacher') {
+            $usedSubjectIds = array_unique(array_map(fn($c) => $c['subject_id'], $courses));
+            $subjects = array_values(array_filter($subjects, fn($s) => in_array($s['id'], $usedSubjectIds, true)));
+        }
+
+        $outcomes = $pdo->query(
+            'SELECT id, code, name, description, default_weight, is_question_outcome, sort_order
+             FROM pd_outcomes ORDER BY sort_order ASC, id ASC'
+        )->fetchAll();
         foreach ($outcomes as &$o) {
             $o['id'] = (int)$o['id'];
             $o['default_weight'] = (int)$o['default_weight'];
@@ -179,8 +275,10 @@ function pd_handle_auth(string $action, string $method): void {
             'authenticated' => true,
             'user' => $user,
             'settings' => $settings,
+            'subjects' => $subjects,
             'courses' => $courses,
             'outcomes' => $outcomes,
+            'assignments' => $assignments,
         ]);
     }
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Kazanımlar, Rubik Kriterleri, Teknik Soru Havuzu ve Rastgele 3 Soru Dağıtımı
+ * Kazanımlar, Rubik Kriterleri, 3 Kategorili Teknik Soru Havuzu ve Akıllı Rastgele 3 Soru Dağıtımı
  */
 
 function pd_handle_criteria(string $method): void {
@@ -114,13 +114,19 @@ function pd_default_rubric_levels(float $maxScore): array {
     ];
 }
 
+function pd_valid_question_type(string $val): string {
+    return in_array($val, ['technical_easy', 'technical_hard', 'vision_comment'], true)
+        ? $val
+        : 'technical_easy';
+}
+
 function pd_handle_questions(string $method): void {
     $pdo = pd_db();
 
     if ($method === 'GET') {
         pd_require_auth();
         $courseId = (int)($_GET['course_id'] ?? 0);
-        $sql = 'SELECT id, course_id, question_text, difficulty, expected_hint, created_at FROM pd_questions';
+        $sql = 'SELECT id, course_id, question_text, difficulty, question_type, expected_hint, created_at FROM pd_questions';
         $params = [];
         if ($courseId > 0) {
             $sql .= ' WHERE course_id = ?';
@@ -133,6 +139,7 @@ function pd_handle_questions(string $method): void {
         foreach ($rows as &$r) {
             $r['id'] = (int)$r['id'];
             $r['course_id'] = (int)$r['course_id'];
+            $r['question_type'] = $r['question_type'] ?: 'technical_easy';
         }
         pd_json_response($rows);
     }
@@ -145,18 +152,22 @@ function pd_handle_questions(string $method): void {
             pd_json_response(['error' => 'Ders seçilmelidir.'], 400);
         }
 
-        // Toplu soru ekleme (satır satır)
         if (isset($b['items']) && is_array($b['items'])) {
             $ins = $pdo->prepare(
-                'INSERT INTO pd_questions (course_id, question_text, difficulty, expected_hint) VALUES (?, ?, ?, ?)'
+                'INSERT INTO pd_questions (course_id, question_text, difficulty, question_type, expected_hint)
+                 VALUES (?, ?, ?, ?, ?)'
             );
+            $defaultType = pd_valid_question_type((string)($b['question_type'] ?? 'technical_easy'));
             $count = 0;
             foreach ($b['items'] as $item) {
                 $text = is_array($item) ? trim((string)($item['question_text'] ?? '')) : trim((string)$item);
                 $diff = is_array($item) && in_array($item['difficulty'] ?? '', ['kolay', 'orta', 'zor'], true) ? $item['difficulty'] : 'kolay';
+                $qType = is_array($item) && isset($item['question_type'])
+                    ? pd_valid_question_type((string)$item['question_type'])
+                    : $defaultType;
                 $hint = is_array($item) ? trim((string)($item['expected_hint'] ?? '')) : '';
                 if ($text !== '') {
-                    $ins->execute([$courseId, $text, $diff, $hint !== '' ? $hint : null]);
+                    $ins->execute([$courseId, $text, $diff, $qType, $hint !== '' ? $hint : null]);
                     $count++;
                 }
             }
@@ -165,14 +176,16 @@ function pd_handle_questions(string $method): void {
 
         $text = trim((string)($b['question_text'] ?? ''));
         $diff = in_array($b['difficulty'] ?? '', ['kolay', 'orta', 'zor'], true) ? $b['difficulty'] : 'kolay';
+        $qType = pd_valid_question_type((string)($b['question_type'] ?? 'technical_easy'));
         $hint = trim((string)($b['expected_hint'] ?? ''));
         if ($text === '') {
             pd_json_response(['error' => 'Soru metni zorunludur.'], 400);
         }
         $stmt = $pdo->prepare(
-            'INSERT INTO pd_questions (course_id, question_text, difficulty, expected_hint) VALUES (?, ?, ?, ?)'
+            'INSERT INTO pd_questions (course_id, question_text, difficulty, question_type, expected_hint)
+             VALUES (?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$courseId, $text, $diff, $hint !== '' ? $hint : null]);
+        $stmt->execute([$courseId, $text, $diff, $qType, $hint !== '' ? $hint : null]);
         pd_json_response(['ok' => true, 'id' => (int)$pdo->lastInsertId()], 201);
     }
 
@@ -182,14 +195,15 @@ function pd_handle_questions(string $method): void {
         $id = (int)($b['id'] ?? 0);
         $text = trim((string)($b['question_text'] ?? ''));
         $diff = in_array($b['difficulty'] ?? '', ['kolay', 'orta', 'zor'], true) ? $b['difficulty'] : 'kolay';
+        $qType = pd_valid_question_type((string)($b['question_type'] ?? 'technical_easy'));
         $hint = trim((string)($b['expected_hint'] ?? ''));
         if ($id <= 0 || $text === '') {
             pd_json_response(['error' => 'Geçersiz soru bilgisi.'], 400);
         }
         $stmt = $pdo->prepare(
-            'UPDATE pd_questions SET question_text = ?, difficulty = ?, expected_hint = ? WHERE id = ?'
+            'UPDATE pd_questions SET question_text = ?, difficulty = ?, question_type = ?, expected_hint = ? WHERE id = ?'
         );
-        $stmt->execute([$text, $diff, $hint !== '' ? $hint : null, $id]);
+        $stmt->execute([$text, $diff, $qType, $hint !== '' ? $hint : null, $id]);
         pd_json_response(['ok' => true]);
     }
 
@@ -207,9 +221,52 @@ function pd_handle_questions(string $method): void {
     pd_json_response(['error' => 'Desteklenmeyen yöntem.'], 405);
 }
 
+/**
+ * Akıllı 3 Kategorili Seçim:
+ * S1 -> technical_easy | S2 -> technical_hard | S3 -> vision_comment
+ * Herhangi bir kova boşsa kalan havuzdan benzersiz olarak tamamlar.
+ */
+function pd_pick_balanced_three(array $poolRows): array {
+    $buckets = [
+        'technical_easy' => [],
+        'technical_hard' => [],
+        'vision_comment' => [],
+    ];
+    $allIds = [];
+    foreach ($poolRows as $r) {
+        $qid = (int)$r['id'];
+        $allIds[] = $qid;
+        $t = $r['question_type'] ?? 'technical_easy';
+        if (isset($buckets[$t])) {
+            $buckets[$t][] = $qid;
+        } else {
+            $buckets['technical_easy'][] = $qid;
+        }
+    }
+
+    $picked = [];
+    foreach (['technical_easy', 'technical_hard', 'vision_comment'] as $type) {
+        $candidates = array_values(array_diff($buckets[$type], $picked));
+        if (!empty($candidates)) {
+            $picked[] = $candidates[random_int(0, count($candidates) - 1)];
+        }
+    }
+
+    // Eksik slot kalırsa genel havuzdan benzersiz tamamla
+    while (count($picked) < 3) {
+        $remaining = array_values(array_diff($allIds, $picked));
+        if (empty($remaining)) {
+            break;
+        }
+        $picked[] = $remaining[random_int(0, count($remaining) - 1)];
+    }
+
+    return $picked;
+}
+
 function pd_handle_student_questions(string $subAction, string $method): void {
     $pdo = pd_db();
-    pd_require_auth();
+    $user = pd_require_auth();
 
     if ($subAction === '' && $method === 'GET') {
         $studentId = (int)($_GET['student_id'] ?? 0);
@@ -219,7 +276,7 @@ function pd_handle_student_questions(string $subAction, string $method): void {
         }
         $stmt = $pdo->prepare(
             'SELECT sq.id, sq.student_id, sq.course_id, sq.question_id, sq.sort_order,
-                    sq.max_score, sq.score, sq.note, q.question_text, q.difficulty, q.expected_hint
+                    sq.max_score, sq.score, sq.note, q.question_text, q.difficulty, q.question_type, q.expected_hint
              FROM pd_student_questions sq
              JOIN pd_questions q ON q.id = sq.question_id
              WHERE sq.student_id = ? AND sq.course_id = ?
@@ -249,8 +306,10 @@ function pd_handle_student_questions(string $subAction, string $method): void {
         if ($courseId <= 0 || ($classId <= 0 && $studentId <= 0)) {
             pd_json_response(['error' => 'Ders ve sınıf (veya öğrenci) seçilmelidir.'], 400);
         }
+        if ($classId > 0) {
+            pd_assert_can_access($user, $classId, $courseId);
+        }
 
-        // Dersin soru puanını al
         $cStmt = $pdo->prepare('SELECT question_points FROM pd_courses WHERE id = ?');
         $cStmt->execute([$courseId]);
         $course = $cStmt->fetch();
@@ -259,15 +318,13 @@ function pd_handle_student_questions(string $subAction, string $method): void {
         }
         $pointsSplit = pd_split_question_points((int)$course['question_points']);
 
-        // Havuzdaki tüm soruları çek
-        $qStmt = $pdo->prepare('SELECT id FROM pd_questions WHERE course_id = ?');
+        $qStmt = $pdo->prepare('SELECT id, question_type FROM pd_questions WHERE course_id = ?');
         $qStmt->execute([$courseId]);
-        $poolIds = array_map(fn($r) => (int)$r['id'], $qStmt->fetchAll());
-        if (count($poolIds) < 3) {
+        $poolRows = $qStmt->fetchAll();
+        if (count($poolRows) < 3) {
             pd_json_response(['error' => 'Rastgele 3 soru atamak için bu dersin havuzunda en az 3 soru olmalıdır.'], 400);
         }
 
-        // Hedef öğrencileri belirle
         if ($studentId > 0) {
             $studentIds = [$studentId];
         } else {
@@ -294,15 +351,7 @@ function pd_handle_student_questions(string $subAction, string $method): void {
                 }
                 $delStmt->execute([$sid, $courseId]);
 
-                // Kriptografik olarak rastgele 3 benzersiz soru seç
-                $shuffled = $poolIds;
-                for ($i = count($shuffled) - 1; $i > 0; $i--) {
-                    $j = random_int(0, $i);
-                    $tmp = $shuffled[$i];
-                    $shuffled[$i] = $shuffled[$j];
-                    $shuffled[$j] = $tmp;
-                }
-                $picked = array_slice($shuffled, 0, 3);
+                $picked = pd_pick_balanced_three($poolRows);
                 foreach ($picked as $idx => $qid) {
                     $insStmt->execute([$sid, $courseId, $qid, $idx + 1, $pointsSplit[$idx]]);
                 }

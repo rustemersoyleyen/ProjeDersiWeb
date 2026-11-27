@@ -8,16 +8,19 @@ import {
   CheckCircle2,
   AlertCircle,
   GraduationCap,
+  Sparkles,
+  Save,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { ClassInfo, Project, SettingsMap, Student } from '../types';
+import type { ClassInfo, Course, Project, SettingsMap, Student } from '../types';
 import { parseStudentFile, type ParsedStudentRow } from '../utils/fileParsers';
 
 interface ClassesPageProps {
   settings: SettingsMap;
+  courses: Course[];
 }
 
-export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
+export const ClassesPage: React.FC<ClassesPageProps> = ({ settings, courses }) => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number>(0);
   const [students, setStudents] = useState<Student[]>([]);
@@ -37,6 +40,14 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
   // Dosya İçe Aktarma (CSV / Excel / PDF)
   const [importRows, setImportRows] = useState<ParsedStudentRow[]>([]);
   const [importing, setImporting] = useState(false);
+
+  // Proje Bazlı Opsiyonel Özel Ödev Adı & Başlangıç Hayali Notu
+  const [overrideMode, setOverrideMode] = useState(false);
+  const [overrideCourseId, setOverrideCourseId] = useState<number>(courses[0]?.id ?? 1);
+  const [bulkOverrideTitle, setBulkOverrideTitle] = useState('');
+  const [draftOverrides, setDraftOverrides] = useState<
+    Record<number, { custom_title: string; initial_vision_note: string }>
+  >({});
 
   const loadBase = async () => {
     const [cList, pList] = await Promise.all([api.getClasses(), api.getProjects()]);
@@ -63,6 +74,18 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
   useEffect(() => {
     loadStudents(selectedClassId);
   }, [selectedClassId]);
+
+  useEffect(() => {
+    const map: Record<number, { custom_title: string; initial_vision_note: string }> = {};
+    for (const st of students) {
+      const cp = st.course_projects?.[String(overrideCourseId)];
+      map[st.id] = {
+        custom_title: cp?.custom_title ?? '',
+        initial_vision_note: cp?.initial_vision_note ?? '',
+      };
+    }
+    setDraftOverrides(map);
+  }, [students, overrideCourseId]);
 
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,6 +191,44 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
     }
   };
 
+  const handleSaveStudentOverride = async (studentId: number) => {
+    const draft = draftOverrides[studentId];
+    if (!draft) return;
+    setMessage(null);
+    try {
+      await api.saveStudentCourseProject({
+        student_id: studentId,
+        course_id: overrideCourseId,
+        custom_title: draft.custom_title.trim() || null,
+        initial_vision_note: draft.initial_vision_note.trim() || null,
+      });
+      await loadStudents(selectedClassId);
+      setMessage({ type: 'ok', text: 'Öğrencinin bu uygulamaya özel ödev adı ve başlangıç hayali kaydedildi.' });
+    } catch (err) {
+      setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Kaydedilemedi.' });
+    }
+  };
+
+  const handleBulkAssignOverride = async () => {
+    if (!selectedClassId || !overrideCourseId) return;
+    setMessage(null);
+    try {
+      const res = await api.saveStudentCourseProject({
+        class_id: selectedClassId,
+        course_id: overrideCourseId,
+        custom_title: bulkOverrideTitle.trim() || null,
+      });
+      setBulkOverrideTitle('');
+      await loadStudents(selectedClassId);
+      setMessage({
+        type: 'ok',
+        text: `${res.updated ?? students.length} öğrenciye seçili uygulama için toplu ödev başlığı uygulandı.`,
+      });
+    } catch (err) {
+      setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Toplu atama başarısız.' });
+    }
+  };
+
   const handleDeleteStudent = async (id: number) => {
     if (!confirm('Bu öğrenciyi silmek istiyor musunuz?')) return;
     try {
@@ -185,7 +246,7 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Sınıflar &amp; Öğrenci Yönetimi</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Sınıf oluşturun, <strong>CSV / Excel (.xlsx) / PDF (e-Okul)</strong> ile toplu öğrenci yükleyin ve her öğrenciye tüm 4 derste ortak geçerli proje adını atayın.
+          Sınıf oluşturun, <strong>CSV / Excel / PDF (e-Okul)</strong> ile öğrenci yükleyin, ana proje adını belirleyin; isterseniz 2./3. proje için <strong>opsiyonel ayrı ödev adı</strong> ve <strong>proje başlangıç hayali notu</strong> girin.
         </p>
       </div>
 
@@ -249,18 +310,22 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-200 font-semibold text-sm text-slate-800">
-              Sınıflar ({classes.length})
+              Yetkili Olduğunuz Sınıflar ({classes.length})
             </div>
             <div className="divide-y divide-slate-100">
               {classes.length === 0 && (
-                <div className="p-4 text-xs text-slate-500 text-center">Henüz sınıf eklenmedi.</div>
+                <div className="p-4 text-xs text-slate-500 text-center">
+                  Henüz atanmış sınıfınız yok.
+                </div>
               )}
               {classes.map((c) => (
                 <div
                   key={c.id}
                   onClick={() => setSelectedClassId(c.id)}
                   className={`px-4 py-3 flex items-center justify-between cursor-pointer transition ${
-                    selectedClassId === c.id ? 'bg-indigo-50/80 border-l-4 border-indigo-600' : 'hover:bg-slate-50'
+                    selectedClassId === c.id
+                      ? 'bg-indigo-50/80 border-l-4 border-indigo-600'
+                      : 'hover:bg-slate-50'
                   }`}
                 >
                   <div>
@@ -323,7 +388,6 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
                   </label>
                 </div>
 
-                {/* Önizleme Tablosu */}
                 {importRows.length > 0 && (
                   <div className="border border-emerald-200 rounded-xl overflow-hidden bg-emerald-50/30">
                     <div className="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between">
@@ -443,7 +507,7 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
                   />
                 </div>
                 <div className="sm:col-span-4">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Proje Adı</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ana Proje Adı</label>
                   <select
                     value={projectId}
                     onChange={(e) => setProjectId(e.target.value)}
@@ -467,65 +531,201 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ settings }) => {
                 </div>
               </form>
 
-              {/* Öğrenci Tablosu */}
+              {/* Öğrenci Tablosu: Ana Proje vs Proje Bazlı Özel Ödev & Başlangıç Hayali */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-sm text-slate-800">
                     {activeClass.name} Öğrenci Listesi ({students.length})
                   </span>
-                  <span className="text-xs text-slate-500">
-                    Proje adı seçimi tüm 4 proje alanında otomatik görünür
-                  </span>
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setOverrideMode(false)}
+                      className={`px-3 py-1 rounded-md font-semibold cursor-pointer ${
+                        !overrideMode ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Ana Proje Adı
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOverrideMode(true)}
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-md font-semibold cursor-pointer ${
+                        overrideMode ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Proje Bazlı Ödev &amp; Başlangıç Hayali
+                    </button>
+                  </div>
                 </div>
+
+                {overrideMode && (
+                  <div className="p-4 bg-indigo-50/50 border-b border-indigo-100 space-y-3">
+                    <div className="grid sm:grid-cols-12 gap-2.5 items-end">
+                      <div className="sm:col-span-5">
+                        <label className="block text-[11px] font-semibold text-indigo-900 mb-1">
+                          Hangi Proje / Uygulama İçin?
+                        </label>
+                        <select
+                          value={overrideCourseId}
+                          onChange={(e) => setOverrideCourseId(Number(e.target.value))}
+                          className="w-full border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs bg-white font-medium"
+                        >
+                          {courses.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="sm:col-span-5">
+                        <label className="block text-[11px] font-semibold text-indigo-900 mb-1">
+                          Tüm Sınıfa Ortak Ödev Başlığı Ver (Opsiyonel)
+                        </label>
+                        <input
+                          type="text"
+                          value={bulkOverrideTitle}
+                          onChange={(e) => setBulkOverrideTitle(e.target.value)}
+                          placeholder="Örn: Responsive Kurumsal Web Sitesi"
+                          className="w-full border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={handleBulkAssignOverride}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Sınıfa Uygula
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-indigo-800">
+                      Özel ödev adı boş bırakılırsa öğrencinin <strong>Ana Proje Adı</strong> geçerli olur. <strong>Başlangıç Hayali</strong> notu ise proje sonunda teknik sorular sorulurken otomatik vurgulanır.
+                    </p>
+                  </div>
+                )}
+
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-4 py-2.5 w-20">No</th>
-                        <th className="px-4 py-2.5">Ad Soyad</th>
-                        <th className="px-4 py-2.5">Atanan Proje Adı</th>
-                        <th className="px-4 py-2.5 w-14 text-right">Sil</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {students.length === 0 && (
+                  {!overrideMode ? (
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
                         <tr>
-                          <td colSpan={4} className="p-8 text-center text-slate-400 text-sm">
-                            Bu sınıfta henüz öğrenci yok. Yukarıdan dosya yükleyebilir veya tek tek ekleyebilirsiniz.
-                          </td>
+                          <th className="px-4 py-2.5 w-20">No</th>
+                          <th className="px-4 py-2.5">Ad Soyad</th>
+                          <th className="px-4 py-2.5">Varsayılan Ana Proje Adı</th>
+                          <th className="px-4 py-2.5 w-14 text-right">Sil</th>
                         </tr>
-                      )}
-                      {students.map((st) => (
-                        <tr key={st.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2.5 font-mono text-slate-600">{st.student_no}</td>
-                          <td className="px-4 py-2.5 font-medium text-slate-900">{st.full_name}</td>
-                          <td className="px-4 py-2.5">
-                            <select
-                              value={st.project_id ?? ''}
-                              onChange={(e) => handleAssignProject(st.id, e.target.value)}
-                              className="w-full max-w-xs border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                            >
-                              <option value="">-- Proje Seçilmedi --</option>
-                              {projects.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.title}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStudent(st.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {students.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="p-8 text-center text-slate-400 text-sm">
+                              Bu sınıfta henüz öğrenci yok.
+                            </td>
+                          </tr>
+                        )}
+                        {students.map((st) => (
+                          <tr key={st.id} className="hover:bg-slate-50">
+                            <td className="px-4 py-2.5 font-mono text-slate-600">{st.student_no}</td>
+                            <td className="px-4 py-2.5 font-medium text-slate-900">{st.full_name}</td>
+                            <td className="px-4 py-2.5">
+                              <select
+                                value={st.project_id ?? ''}
+                                onChange={(e) => handleAssignProject(st.id, e.target.value)}
+                                className="w-full max-w-xs border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                              >
+                                <option value="">-- Proje Seçilmedi --</option>
+                                {projects.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStudent(st.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2.5 w-36">Öğrenci</th>
+                          <th className="px-3 py-2.5">Bu Proje İçin Özel Ödev Adı (Ops.)</th>
+                          <th className="px-3 py-2.5">Proje Başlangıç Hayali / Hedefi Notu</th>
+                          <th className="px-3 py-2.5 w-20 text-right">Kaydet</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {students.map((st) => {
+                          const draft = draftOverrides[st.id] ?? {
+                            custom_title: '',
+                            initial_vision_note: '',
+                          };
+                          return (
+                            <tr key={st.id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2">
+                                <div className="font-semibold text-slate-900">
+                                  {st.student_no} {st.full_name}
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[140px]">
+                                  Ana: {st.project_title || '-'}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  value={draft.custom_title}
+                                  onChange={(e) =>
+                                    setDraftOverrides((prev) => ({
+                                      ...prev,
+                                      [st.id]: { ...draft, custom_title: e.target.value },
+                                    }))
+                                  }
+                                  placeholder={st.project_title ? `Varsayılan: ${st.project_title}` : 'Özel ödev adı'}
+                                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  value={draft.initial_vision_note}
+                                  onChange={(e) =>
+                                    setDraftOverrides((prev) => ({
+                                      ...prev,
+                                      [st.id]: { ...draft, initial_vision_note: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="Başlangıçta hayal ettiği / hedeflediği özellik..."
+                                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveStudentOverride(st.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             </>

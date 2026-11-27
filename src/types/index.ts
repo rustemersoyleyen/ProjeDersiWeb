@@ -1,4 +1,13 @@
 export type UserRole = 'admin' | 'teacher';
+export type SubjectModelType = 'project_rubric' | 'practice_assignment';
+export type EvaluationMode = 'rubric_full' | 'weekly_plus_final' | 'practice_simple';
+export type QuestionType = 'technical_easy' | 'technical_hard' | 'vision_comment';
+export type WeeklyStatus = 'done' | 'partial' | 'missing';
+
+export interface TeacherAssignment {
+  class_id: number;
+  course_id: number;
+}
 
 export interface User {
   id: number;
@@ -9,6 +18,7 @@ export interface User {
   role: UserRole;
   is_active: number;
   must_change_password?: number;
+  assignments?: TeacherAssignment[];
   created_at?: string;
 }
 
@@ -19,15 +29,34 @@ export interface SettingsMap {
   [key: string]: string | undefined;
 }
 
+export interface Subject {
+  id: number;
+  name: string;
+  code: string;
+  model_type: SubjectModelType;
+  description?: string | null;
+  sort_order: number;
+  is_active: number;
+  course_count?: number;
+}
+
 export interface Course {
   id: number;
+  subject_id: number;
+  subject_name?: string;
+  model_type?: SubjectModelType;
   name: string;
   short_code: string;
   description?: string | null;
   question_points: number;
+  evaluation_mode: EvaluationMode;
+  final_completion_points: number;
+  final_report_points: number;
   sort_order: number;
   question_count?: number;
   rubric_points?: number;
+  weekly_task_count?: number;
+  weekly_points_sum?: number;
 }
 
 export interface Outcome {
@@ -84,7 +113,15 @@ export interface Project {
 export interface StudentEvalSummary {
   total_score: number;
   rubric_total: number;
+  weekly_total?: number;
   question_total: number;
+}
+
+export interface StudentCourseProject {
+  project_id: number | null;
+  project_title?: string | null;
+  custom_title?: string | null;
+  initial_vision_note?: string | null;
 }
 
 export interface Student {
@@ -97,6 +134,7 @@ export interface Student {
   project_title?: string | null;
   evaluations: Record<string, StudentEvalSummary>;
   question_counts: Record<string, number>;
+  course_projects?: Record<string, StudentCourseProject>;
 }
 
 export type Difficulty = 'kolay' | 'orta' | 'zor';
@@ -106,6 +144,7 @@ export interface Question {
   course_id: number;
   question_text: string;
   difficulty: Difficulty;
+  question_type: QuestionType;
   expected_hint?: string | null;
 }
 
@@ -118,7 +157,37 @@ export interface StudentQuestion {
   note?: string | null;
   question_text: string;
   difficulty?: Difficulty;
+  question_type?: QuestionType;
   expected_hint?: string | null;
+}
+
+export interface WeeklyTask {
+  id: number;
+  course_id: number;
+  week_no: number;
+  title: string;
+  description?: string | null;
+  max_score: number;
+  due_date?: string | null;
+  sort_order: number;
+}
+
+export interface WeeklyScoreEntry {
+  status: WeeklyStatus;
+  score: number;
+  note?: string | null;
+}
+
+export interface WeeklyScoresResponse {
+  tasks: WeeklyTask[];
+  students: Array<{
+    id: number;
+    student_no: string;
+    full_name: string;
+    project_title: string | null;
+    weekly_scores: Record<string, WeeklyScoreEntry>;
+    weekly_total: number;
+  }>;
 }
 
 export interface EvaluationData {
@@ -129,21 +198,47 @@ export interface EvaluationData {
     full_name: string;
     project_id: number | null;
     project_title: string | null;
+    base_project_title?: string | null;
+    initial_vision_note?: string | null;
     class_name: string;
     academic_year: string;
     school_name: string;
   };
   course: {
     id: number;
+    subject_id: number;
+    subject_name?: string;
+    model_type?: SubjectModelType;
     name: string;
     short_code: string;
     question_points: number;
+    evaluation_mode: EvaluationMode;
+    final_completion_points: number;
+    final_report_points: number;
   };
   criteria: Criterion[];
+  weekly_items: Array<{
+    id: number;
+    week_no: number;
+    title: string;
+    description?: string | null;
+    max_score: number;
+    due_date?: string | null;
+    status: WeeklyStatus;
+    score: number;
+    note?: string | null;
+  }>;
+  weekly_summary: {
+    earned: number;
+    max: number;
+  };
   questions: StudentQuestion[];
   evaluation: {
     id: number;
     rubric_total: number;
+    weekly_total: number;
+    final_completion_score: number | null;
+    final_report_score: number | null;
     question_total: number;
     total_score: number;
     notes: string | null;
@@ -162,7 +257,13 @@ export interface MatrixResponse {
     evaluations: number;
     teachers: number;
   };
-  courses: Array<{ id: number; name: string; short_code: string }>;
+  courses: Array<{
+    id: number;
+    subject_id: number;
+    name: string;
+    short_code: string;
+    evaluation_mode?: EvaluationMode;
+  }>;
   rows: Array<{
     id: number;
     student_no: string;
@@ -182,9 +283,15 @@ export interface PrintDataResponse {
   };
   course: {
     id: number;
+    subject_id: number;
+    subject_name?: string;
+    model_type?: SubjectModelType;
     name: string;
     short_code: string;
     question_points: number;
+    evaluation_mode: EvaluationMode;
+    final_completion_points: number;
+    final_report_points: number;
   };
   settings: SettingsMap;
   teachers: Array<{ id: number; full_name: string; branch: string; title: string }>;
@@ -196,19 +303,32 @@ export interface PrintDataResponse {
     max_score: number;
     sort_order: number;
   }>;
+  weekly_tasks: Array<{
+    id: number;
+    week_no: number;
+    title: string;
+    max_score: number;
+  }>;
   students: Array<{
     id: number;
     student_no: string;
     full_name: string;
     project_title: string | null;
+    initial_vision_note?: string | null;
     questions: Array<{
       sort_order: number;
       question_text: string;
+      question_type?: QuestionType;
       max_score: number;
       score: number | null;
     }>;
+    weekly_scores: Record<string, { status: WeeklyStatus; score: number }>;
+    weekly_total: number;
     evaluation: {
       rubric_total: number;
+      weekly_total: number;
+      final_completion_score: number | null;
+      final_report_score: number | null;
       question_total: number;
       total_score: number;
       notes: string | null;
@@ -221,6 +341,8 @@ export interface AuthBootstrap {
   authenticated: boolean;
   user: User | null;
   settings?: SettingsMap;
+  subjects?: Subject[];
   courses?: Course[];
   outcomes?: Outcome[];
+  assignments?: TeacherAssignment[];
 }

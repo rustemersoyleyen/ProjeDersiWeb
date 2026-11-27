@@ -10,16 +10,18 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { ClassInfo, MatrixResponse } from '../types';
+import type { ClassInfo, MatrixResponse, Subject } from '../types';
 import { exportMatrixToExcel } from '../utils/excelExport';
 
 interface DashboardPageProps {
+  subjects: Subject[];
   onNavigateEvaluate: (classId: number, courseId: number, studentId?: number) => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateEvaluate }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({ subjects, onNavigateEvaluate }) => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number>(0);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number>(subjects[0]?.id ?? 0);
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,7 +31,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateEvaluate
       if (list.length > 0) {
         setSelectedClassId(list[0].id);
       } else {
-        api.getMatrix().then(setMatrix).finally(() => setLoading(false));
+        api.getMatrix(undefined, selectedSubjectId || undefined).then(setMatrix).finally(() => setLoading(false));
       }
     });
   }, []);
@@ -38,11 +40,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateEvaluate
     if (selectedClassId > 0) {
       setLoading(true);
       api
-        .getMatrix(selectedClassId)
+        .getMatrix(selectedClassId, selectedSubjectId || undefined)
         .then(setMatrix)
         .finally(() => setLoading(false));
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, selectedSubjectId]);
 
   const activeClass = classes.find((c) => c.id === selectedClassId);
 
@@ -100,6 +102,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateEvaluate
                 </option>
               ))}
             </select>
+            {subjects.length > 1 && (
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(Number(e.target.value))}
+                className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value={0}>Tüm Ana Dersler</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {matrix && activeClass && matrix.rows.length > 0 && (

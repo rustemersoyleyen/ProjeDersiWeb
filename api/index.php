@@ -1,8 +1,6 @@
 <?php
 /**
- * Proje Değerlendirme ve Rubik Sistemi - Tek Giriş Noktalı PHP REST API
- * Kullanım: api/index.php?route=/auth/me
- * GitHub Pages + kiracbilisim.net MySQL Hibrit Mimarisi ile tam uyumludur.
+ * Proje Değerlendirme ve Rubik Sistemi - Tek Giriş Noktalı PHP REST API (v2)
  */
 
 declare(strict_types=1);
@@ -12,6 +10,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/endpoints/users_courses.php';
 require_once __DIR__ . '/endpoints/classes_students.php';
 require_once __DIR__ . '/endpoints/criteria_questions.php';
+require_once __DIR__ . '/endpoints/weekly.php';
 require_once __DIR__ . '/endpoints/evaluations_print.php';
 
 pd_send_cors_headers();
@@ -22,7 +21,6 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// Windows IIS (PleskWin) uyumluluğu: POST + ?_method=PUT|DELETE desteği
 if ($method === 'POST' && !empty($_GET['_method'])) {
     $override = strtoupper(trim((string)$_GET['_method']));
     if (in_array($override, ['PUT', 'DELETE'], true)) {
@@ -57,6 +55,9 @@ try {
         case 'users':
             pd_handle_users($method);
             break;
+        case 'subjects':
+            pd_handle_subjects($method);
+            break;
         case 'courses':
             pd_handle_courses($method);
             break;
@@ -72,6 +73,9 @@ try {
         case 'students':
             pd_handle_students($method);
             break;
+        case 'student-course-projects':
+            pd_handle_student_course_projects($method);
+            break;
         case 'criteria':
             pd_handle_criteria($method);
             break;
@@ -80,6 +84,12 @@ try {
             break;
         case 'student-questions':
             pd_handle_student_questions($subAction, $method);
+            break;
+        case 'weekly-tasks':
+            pd_handle_weekly_tasks($method);
+            break;
+        case 'weekly-scores':
+            pd_handle_weekly_scores($method);
             break;
         case 'evaluations':
             pd_handle_evaluations($method);
