@@ -52,10 +52,11 @@ CREATE TABLE IF NOT EXISTS `pd_student_course_projects` (
   CONSTRAINT `fk_pd_scp_project` FOREIGN KEY (`project_id`) REFERENCES `pd_projects` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Haftalık Çalışma Görevleri (Her proje/uygulama için opsiyonel haftalık plan)
+-- 4. Haftalık Çalışma Görevleri (Her proje/uygulama için opsiyonel haftalık plan + Ana Kazanım)
 CREATE TABLE IF NOT EXISTS `pd_weekly_tasks` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `course_id` INT UNSIGNED NOT NULL,
+  `outcome_id` INT UNSIGNED DEFAULT NULL,
   `week_no` INT UNSIGNED NOT NULL DEFAULT 1,
   `title` VARCHAR(180) NOT NULL,
   `description` VARCHAR(255) DEFAULT NULL,
@@ -67,6 +68,9 @@ CREATE TABLE IF NOT EXISTS `pd_weekly_tasks` (
   KEY `idx_pd_wt_course` (`course_id`, `week_no`),
   CONSTRAINT `fk_pd_wt_course` FOREIGN KEY (`course_id`) REFERENCES `pd_courses` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `pd_weekly_tasks`
+  ADD COLUMN IF NOT EXISTS `outcome_id` INT UNSIGNED DEFAULT NULL AFTER `course_id`;
 
 -- 5. Öğrenci Haftalık Kontrol Puanları
 CREATE TABLE IF NOT EXISTS `pd_student_weekly_scores` (

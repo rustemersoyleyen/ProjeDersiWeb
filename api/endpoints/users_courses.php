@@ -233,26 +233,72 @@ function pd_handle_subjects(string $method): void {
     }
 
     if ($method === 'POST') {
-        pd_require_admin();
+        $admin = pd_require_admin();
         $b = pd_get_json_body();
         $name = trim((string)($b['name'] ?? ''));
         $code = trim((string)($b['code'] ?? ''));
         $modelType = ($b['model_type'] ?? 'practice_assignment') === 'project_rubric' ? 'project_rubric' : 'practice_assignment';
         $description = trim((string)($b['description'] ?? ''));
         $sortOrder = (int)($b['sort_order'] ?? 10);
+        $classIds = is_array($b['class_ids'] ?? null) ? array_map('intval', $b['class_ids']) : [];
 
         if ($name === '' || $code === '') {
             pd_json_response(['error' => 'Ders adı ve kısa kodu zorunludur.'], 400);
         }
 
+        $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare(
                 'INSERT INTO pd_subjects (name, code, model_type, description, sort_order, is_active)
                  VALUES (?, ?, ?, ?, ?, 1)'
             );
             $stmt->execute([$name, $code, $modelType, $description !== '' ? $description : null, $sortOrder]);
-            pd_json_response(['ok' => true, 'id' => (int)$pdo->lastInsertId()], 201);
+            $subjectId = (int)$pdo->lastInsertId();
+
+            // Yeni ders için ilk uygulama/proje kaydını ve seçili sınıfları otomatik bağla
+            $defaultMode = $modelType === 'practice_assignment' ? 'practice_simple' : 'rubric_full';
+            $defaultQ = $modelType === 'practice_assignment' ? 0 : 20;
+            $firstCourseName = $modelType === 'practice_assignment'
+                ? ($name . ' - Uygulama 1')
+                : ($name . ' - 1.Dönem 1.Uygulama');
+            $firstCode = substr($code, 0, 14) . '-U1';
+
+            $cIns = $pdo->prepare(
+                'INSERT INTO pd_courses (subject_id, name, short_code, description, question_points, evaluation_mode, final_completion_points, final_report_points, sort_order)
+                 VALUES (?, ?, ?, NULL, ?, ?, 20, 10, 1)'
+            );
+            $cIns->execute([$subjectId, $firstCourseName, $firstCode, $defaultQ, $defaultMode]);
+            $firstCourseId = (int)$pdo->lastInsertId();
+
+            if ($defaultMode === 'practice_simple') {
+                $defaultLevels = json_encode([
+                    ['level' => 1, 'label' => 'Geliştirilmeli', 'description' => 'Eksik veya çalışmıyor', 'points' => 25],
+                    ['level' => 2, 'label' => 'Orta', 'description' => 'Temel beklenti kısmen karşılandı', 'points' => 50],
+                    ['level' => 3, 'label' => 'İyi', 'description' => 'Büyük ölçüde eksiksiz', 'points' => 75],
+                    ['level' => 4, 'label' => 'Çok İyi', 'description' => 'Eksiksiz ve özgün uygulama', 'points' => 100],
+                ], JSON_UNESCAPED_UNICODE);
+                $crIns = $pdo->prepare(
+                    'INSERT INTO pd_criteria (course_id, outcome_id, name, max_score, rubric_levels, sort_order)
+                     VALUES (?, 3, ?, 100.00, ?, 1)'
+                );
+                $crIns->execute([$firstCourseId, 'Uygulama ödevi / görev performansı ve çalışırlık', $defaultLevels]);
+            }
+
+            if (!empty($classIds)) {
+                $cctIns = $pdo->prepare(
+                    'INSERT IGNORE INTO pd_class_course_teachers (class_id, course_id, teacher_id, sort_order) VALUES (?, ?, ?, 1)'
+                );
+                foreach ($classIds as $cid) {
+                    if ($cid > 0) {
+                        $cctIns->execute([$cid, $firstCourseId, $admin['id']]);
+                    }
+                }
+            }
+
+            $pdo->commit();
+            pd_json_response(['ok' => true, 'id' => $subjectId, 'first_course_id' => $firstCourseId], 201);
         } catch (PDOException $e) {
+            $pdo->rollBack();
             pd_json_response(['error' => 'Bu ders kodu zaten kullanılıyor.'], 409);
         }
     }

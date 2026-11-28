@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Save,
   KeyRound,
@@ -10,9 +10,11 @@ import {
   Wand2,
   X,
   Layers,
+  Check,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type {
+  ClassInfo,
   Course,
   EvaluationMode,
   SettingsMap,
@@ -60,10 +62,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Ana Ders (Subject) Ekleme
+  // Ana Ders (Subject) Ekleme + Sınıf Seçimi
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [newSubjName, setNewSubjName] = useState('');
   const [newSubjCode, setNewSubjCode] = useState('');
   const [newSubjModel, setNewSubjModel] = useState<SubjectModelType>('practice_assignment');
+  const [newSubjClassIds, setNewSubjClassIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    api.getClasses().then(setClasses).catch(() => {});
+  }, []);
 
   // Satır içi uygulama/proje düzenleme
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<number>(0);
@@ -131,14 +139,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         code: newSubjCode.trim().toUpperCase(),
         model_type: newSubjModel,
         sort_order: subjects.length + 1,
+        class_ids: newSubjClassIds,
       });
       setNewSubjName('');
       setNewSubjCode('');
+      setNewSubjClassIds([]);
       setNewCourseSubjectId(res.id);
       await onRefresh();
       setMessage({
         type: 'ok',
-        text: 'Yeni ana ders oluşturuldu. Şimdi aşağıdan bu derse uygulama ödevleri veya proje notları ekleyebilirsiniz.',
+        text: 'Yeni ana ders, ilk uygulaması ve seçili sınıf bağlantıları oluşturuldu.',
       });
     } catch (err) {
       setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Ders eklenemedi.' });
@@ -318,49 +328,99 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             ))}
           </div>
 
-          <form onSubmit={handleCreateSubject} className="grid sm:grid-cols-12 gap-3 items-end">
-            <div className="sm:col-span-5">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Yeni Ders Adı</label>
-              <input
-                type="text"
-                required
-                value={newSubjName}
-                onChange={(e) => setNewSubjName(e.target.value)}
-                placeholder="Örn: Web Tasarımı ve Programlama (Uygulama)"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-              />
+          <form onSubmit={handleCreateSubject} className="space-y-3">
+            <div className="grid sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-5">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Yeni Ders Adı</label>
+                <input
+                  type="text"
+                  required
+                  value={newSubjName}
+                  onChange={(e) => setNewSubjName(e.target.value)}
+                  placeholder="Örn: Programlama Temelleri"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Kısa Kod</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={12}
+                  value={newSubjCode}
+                  onChange={(e) => setNewSubjCode(e.target.value)}
+                  placeholder="PT-1"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm uppercase"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Değerlendirme Modeli</label>
+                <select
+                  value={newSubjModel}
+                  onChange={(e) => setNewSubjModel(e.target.value as SubjectModelType)}
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white"
+                >
+                  <option value="practice_assignment">Uygulama Ödevi / Pratik</option>
+                  <option value="project_rubric">Proje Rubik Modeli</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  className="w-full inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Ders Ekle
+                </button>
+              </div>
             </div>
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Kısa Kod</label>
-              <input
-                type="text"
-                required
-                maxLength={12}
-                value={newSubjCode}
-                onChange={(e) => setNewSubjCode(e.target.value)}
-                placeholder="WTP-U"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm uppercase"
-              />
-            </div>
-            <div className="sm:col-span-3">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Değerlendirme Modeli</label>
-              <select
-                value={newSubjModel}
-                onChange={(e) => setNewSubjModel(e.target.value as SubjectModelType)}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white"
-              >
-                <option value="practice_assignment">Uygulama Ödevi / Pratik</option>
-                <option value="project_rubric">Proje Rubik Modeli</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Ders Ekle
-              </button>
-            </div>
+
+            {/* Bu Dersin Okutulacağı Sınıflar */}
+            {classes.length > 0 && (
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">
+                    Bu Dersin Okutulacağı Sınıflar ({newSubjClassIds.length} seçili)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewSubjClassIds(
+                        newSubjClassIds.length === classes.length ? [] : classes.map((c) => c.id)
+                      )
+                    }
+                    className="text-indigo-600 hover:underline font-medium cursor-pointer"
+                  >
+                    {newSubjClassIds.length === classes.length ? 'Temizle' : 'Tüm Sınıfları Seç'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {classes.map((c) => {
+                    const checked = newSubjClassIds.includes(c.id);
+                    return (
+                      <button
+                        type="button"
+                        key={c.id}
+                        onClick={() =>
+                          setNewSubjClassIds((prev) =>
+                            prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                          )
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs cursor-pointer ${
+                          checked
+                            ? 'bg-emerald-600 border-emerald-600 text-white font-medium'
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-400'
+                        }`}
+                      >
+                        {checked && <Check className="w-3 h-3" />}
+                        <span>
+                          {c.name} ({c.student_count})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </form>
         </div>
       )}

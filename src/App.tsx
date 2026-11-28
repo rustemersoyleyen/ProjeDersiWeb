@@ -227,7 +227,11 @@ export const App: React.FC = () => {
           )}
           {activeTab === 'questions' && <QuestionsPage courses={courses} />}
           {activeTab === 'weekly' && (
-            <WeeklyTrackingPage courses={courses} onCoursesChanged={bootstrap} />
+            <WeeklyTrackingPage
+              courses={courses}
+              outcomes={outcomes}
+              onCoursesChanged={bootstrap}
+            />
           )}
           {activeTab === 'evaluate' && (
             <EvaluatePage

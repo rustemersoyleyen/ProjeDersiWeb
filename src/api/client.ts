@@ -219,7 +219,8 @@ export const api = {
     model_type: SubjectModelType;
     description?: string;
     sort_order?: number;
-  }) => request<{ ok: boolean; id: number }>('/subjects', { method: 'POST', body: payload }),
+    class_ids?: number[];
+  }) => request<{ ok: boolean; id: number; first_course_id?: number }>('/subjects', { method: 'POST', body: payload }),
   updateSubject: (payload: {
     id: number;
     name: string;
@@ -406,6 +407,7 @@ export const api = {
     request<WeeklyTask[]>('/weekly-tasks', { params: { course_id } }),
   createWeeklyTask: (payload: {
     course_id: number;
+    outcome_id?: number | null;
     week_no: number;
     title: string;
     description?: string;
@@ -414,7 +416,14 @@ export const api = {
   }) => request<{ ok: boolean; id: number }>('/weekly-tasks', { method: 'POST', body: payload }),
   bulkCreateWeeklyTasks: (
     course_id: number,
-    items: Array<{ week_no: number; title: string; max_score: number; description?: string; due_date?: string }>
+    items: Array<{
+      outcome_id?: number | null;
+      week_no: number;
+      title: string;
+      max_score: number;
+      description?: string;
+      due_date?: string;
+    }>
   ) =>
     request<{ ok: boolean; inserted: number }>('/weekly-tasks', {
       method: 'POST',
@@ -422,6 +431,7 @@ export const api = {
     }),
   updateWeeklyTask: (payload: {
     id: number;
+    outcome_id?: number | null;
     week_no: number;
     title: string;
     description?: string;

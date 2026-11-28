@@ -13,15 +13,19 @@ function pd_handle_weekly_tasks(string $method): void {
             pd_json_response(['error' => 'course_id zorunludur.'], 400);
         }
         $stmt = $pdo->prepare(
-            'SELECT id, course_id, week_no, title, description, max_score, due_date, sort_order
-             FROM pd_weekly_tasks WHERE course_id = ?
-             ORDER BY week_no ASC, sort_order ASC, id ASC'
+            'SELECT wt.id, wt.course_id, wt.outcome_id, o.code AS outcome_code, o.name AS outcome_name,
+                    wt.week_no, wt.title, wt.description, wt.max_score, wt.due_date, wt.sort_order
+             FROM pd_weekly_tasks wt
+             LEFT JOIN pd_outcomes o ON o.id = wt.outcome_id
+             WHERE wt.course_id = ?
+             ORDER BY wt.week_no ASC, wt.sort_order ASC, wt.id ASC'
         );
         $stmt->execute([$courseId]);
         $rows = $stmt->fetchAll();
         foreach ($rows as &$r) {
             $r['id'] = (int)$r['id'];
             $r['course_id'] = (int)$r['course_id'];
+            $r['outcome_id'] = $r['outcome_id'] !== null ? (int)$r['outcome_id'] : null;
             $r['week_no'] = (int)$r['week_no'];
             $r['max_score'] = (float)$r['max_score'];
             $r['sort_order'] = (int)$r['sort_order'];
@@ -40,8 +44,8 @@ function pd_handle_weekly_tasks(string $method): void {
         // Toplu haftalık plan yükleme
         if (isset($b['items']) && is_array($b['items'])) {
             $ins = $pdo->prepare(
-                'INSERT INTO pd_weekly_tasks (course_id, week_no, title, description, max_score, due_date, sort_order)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO pd_weekly_tasks (course_id, outcome_id, week_no, title, description, max_score, due_date, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $count = 0;
             foreach ($b['items'] as $idx => $item) {
@@ -49,16 +53,18 @@ function pd_handle_weekly_tasks(string $method): void {
                 if ($title === '') {
                     continue;
                 }
+                $outcomeId = isset($item['outcome_id']) && (int)$item['outcome_id'] > 0 ? (int)$item['outcome_id'] : null;
                 $weekNo = max(1, (int)($item['week_no'] ?? ($idx + 1)));
                 $desc = trim((string)($item['description'] ?? ''));
                 $maxScore = max(0.5, (float)($item['max_score'] ?? 10));
                 $dueDate = trim((string)($item['due_date'] ?? ''));
-                $ins->execute([$courseId, $weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $idx + 1]);
+                $ins->execute([$courseId, $outcomeId, $weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $idx + 1]);
                 $count++;
             }
             pd_json_response(['ok' => true, 'inserted' => $count], 201);
         }
 
+        $outcomeId = isset($b['outcome_id']) && (int)$b['outcome_id'] > 0 ? (int)$b['outcome_id'] : null;
         $weekNo = max(1, (int)($b['week_no'] ?? 1));
         $title = trim((string)($b['title'] ?? ''));
         $desc = trim((string)($b['description'] ?? ''));
@@ -71,10 +77,10 @@ function pd_handle_weekly_tasks(string $method): void {
         }
 
         $stmt = $pdo->prepare(
-            'INSERT INTO pd_weekly_tasks (course_id, week_no, title, description, max_score, due_date, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO pd_weekly_tasks (course_id, outcome_id, week_no, title, description, max_score, due_date, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$courseId, $weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $sortOrder]);
+        $stmt->execute([$courseId, $outcomeId, $weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $sortOrder]);
         pd_json_response(['ok' => true, 'id' => (int)$pdo->lastInsertId()], 201);
     }
 
@@ -82,6 +88,7 @@ function pd_handle_weekly_tasks(string $method): void {
         pd_require_auth();
         $b = pd_get_json_body();
         $id = (int)($b['id'] ?? 0);
+        $outcomeId = isset($b['outcome_id']) && (int)$b['outcome_id'] > 0 ? (int)$b['outcome_id'] : null;
         $weekNo = max(1, (int)($b['week_no'] ?? 1));
         $title = trim((string)($b['title'] ?? ''));
         $desc = trim((string)($b['description'] ?? ''));
@@ -94,9 +101,9 @@ function pd_handle_weekly_tasks(string $method): void {
         }
 
         $stmt = $pdo->prepare(
-            'UPDATE pd_weekly_tasks SET week_no = ?, title = ?, description = ?, max_score = ?, due_date = ?, sort_order = ? WHERE id = ?'
+            'UPDATE pd_weekly_tasks SET outcome_id = ?, week_no = ?, title = ?, description = ?, max_score = ?, due_date = ?, sort_order = ? WHERE id = ?'
         );
-        $stmt->execute([$weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $sortOrder, $id]);
+        $stmt->execute([$outcomeId, $weekNo, $title, $desc !== '' ? $desc : null, $maxScore, $dueDate !== '' ? $dueDate : null, $sortOrder, $id]);
         pd_json_response(['ok' => true]);
     }
 
@@ -127,15 +134,19 @@ function pd_handle_weekly_scores(string $method): void {
         pd_assert_can_access($user, $classId, $courseId);
 
         $tStmt = $pdo->prepare(
-            'SELECT id, course_id, week_no, title, description, max_score, due_date, sort_order
-             FROM pd_weekly_tasks WHERE course_id = ?
-             ORDER BY week_no ASC, sort_order ASC, id ASC'
+            'SELECT wt.id, wt.course_id, wt.outcome_id, o.code AS outcome_code, o.name AS outcome_name,
+                    wt.week_no, wt.title, wt.description, wt.max_score, wt.due_date, wt.sort_order
+             FROM pd_weekly_tasks wt
+             LEFT JOIN pd_outcomes o ON o.id = wt.outcome_id
+             WHERE wt.course_id = ?
+             ORDER BY wt.week_no ASC, wt.sort_order ASC, wt.id ASC'
         );
         $tStmt->execute([$courseId]);
         $tasks = $tStmt->fetchAll();
         foreach ($tasks as &$t) {
             $t['id'] = (int)$t['id'];
             $t['course_id'] = (int)$t['course_id'];
+            $t['outcome_id'] = $t['outcome_id'] !== null ? (int)$t['outcome_id'] : null;
             $t['week_no'] = (int)$t['week_no'];
             $t['max_score'] = (float)$t['max_score'];
         }

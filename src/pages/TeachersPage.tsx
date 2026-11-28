@@ -31,6 +31,11 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({
   const [isActive, setIsActive] = useState(1);
   const [formAssignments, setFormAssignments] = useState<TeacherAssignment[]>([]);
 
+  // Satır içi doğrudan Sınıf/Ders Atama paneli
+  const [inlineAssignUserId, setInlineAssignUserId] = useState<number | null>(null);
+  const [inlineAssignments, setInlineAssignments] = useState<TeacherAssignment[]>([]);
+  const [savingInline, setSavingInline] = useState(false);
+
   const loadAll = async () => {
     setLoading(true);
     try {
@@ -139,6 +144,61 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({
     setIsActive(u.is_active);
     setFormAssignments(u.assignments ?? []);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openInlineAssign = (u: User) => {
+    if (inlineAssignUserId === u.id) {
+      setInlineAssignUserId(null);
+      return;
+    }
+    setInlineAssignUserId(u.id);
+    setInlineAssignments(u.assignments ?? []);
+  };
+
+  const toggleInlinePair = (classId: number, courseId: number) => {
+    setInlineAssignments((prev) => {
+      const exists = prev.some((a) => a.class_id === classId && a.course_id === courseId);
+      if (exists) {
+        return prev.filter((a) => !(a.class_id === classId && a.course_id === courseId));
+      }
+      return [...prev, { class_id: classId, course_id: courseId }];
+    });
+  };
+
+  const toggleInlineAllForClass = (classId: number) => {
+    const classCourses = allCourses.map((c) => c.id);
+    const allChecked = classCourses.every((cid) =>
+      inlineAssignments.some((a) => a.class_id === classId && a.course_id === cid)
+    );
+    setInlineAssignments((prev) => {
+      const others = prev.filter((a) => a.class_id !== classId);
+      if (allChecked) return others;
+      return [...others, ...classCourses.map((cid) => ({ class_id: classId, course_id: cid }))];
+    });
+  };
+
+  const saveInlineAssign = async (u: User) => {
+    setSavingInline(true);
+    setMessage(null);
+    try {
+      await api.updateUser({
+        id: u.id,
+        full_name: u.full_name,
+        branch: u.branch,
+        title: u.title,
+        role: u.role,
+        is_active: u.is_active,
+        assignments: inlineAssignments,
+      });
+      setInlineAssignUserId(null);
+      await loadAll();
+      if (onRefreshBootstrap) await onRefreshBootstrap();
+      setMessage({ type: 'ok', text: `${u.full_name} için sınıf ve ders atamaları kaydedildi.` });
+    } catch (err) {
+      setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Atama kaydedilemedi.' });
+    } finally {
+      setSavingInline(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -384,55 +444,158 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{u.full_name}</div>
-                      <div className="text-xs text-slate-500">
-                        {u.branch} · {u.title}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-slate-600">{u.username}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      {u.role === 'admin' ? (
-                        <span className="text-indigo-700 font-medium">Tüm Sınıflar ve Dersler (Admin)</span>
-                      ) : (
-                        summarizeAssignments(u.assignments)
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {u.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
-                          <Shield className="w-3 h-3" /> Admin
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-                          Öğretmen
-                        </span>
-                      )}
-                    </td>
-                    {isAdmin && (
-                      <td className="px-4 py-3 text-right space-x-1">
-                        <button
-                          onClick={() => handleEdit(u)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg cursor-pointer"
-                          title="Düzenle & Sınıf/Ders Ata"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" /> Düzenle
-                        </button>
-                        {u.id !== currentUser.id && (
-                          <button
-                            onClick={() => handleDelete(u.id)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
-                            title="Sil"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                {users.map((u) => {
+                  const isInlineOpen = inlineAssignUserId === u.id;
+                  return (
+                    <React.Fragment key={u.id}>
+                      <tr className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900">{u.full_name}</div>
+                          <div className="text-xs text-slate-500">
+                            {u.branch} · {u.title}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-600">{u.username}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">
+                          {u.role === 'admin' ? (
+                            <span className="text-indigo-700 font-medium">Tüm Sınıflar ve Dersler (Admin)</span>
+                          ) : (
+                            summarizeAssignments(u.assignments)
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {u.role === 'admin' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                              <Shield className="w-3 h-3" /> Admin
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+                              Öğretmen
+                            </span>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => openInlineAssign(u)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg cursor-pointer ${
+                                isInlineOpen
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                              }`}
+                            >
+                              <Users className="w-3.5 h-3.5" /> Sınıf/Ders Ata
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg cursor-pointer"
+                              title="Bilgileri Düzenle"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" /> Düzenle
+                            </button>
+                            {u.id !== currentUser.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(u.id)}
+                                className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
+                                title="Sil"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </td>
                         )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                      </tr>
+
+                      {/* Doğrudan Satır İçi Sınıf & Ders Atama Paneli */}
+                      {isAdmin && isInlineOpen && (
+                        <tr className="bg-emerald-50/40">
+                          <td colSpan={5} className="px-4 py-3.5">
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-emerald-950">
+                                  {u.full_name} — Sınıf ve Ders Atamaları ({inlineAssignments.length} seçili)
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setInlineAssignUserId(null)}
+                                    className="px-3 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-600 cursor-pointer"
+                                  >
+                                    Kapat
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={savingInline}
+                                    onClick={() => saveInlineAssign(u)}
+                                    className="px-3.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
+                                  >
+                                    {savingInline ? 'Kaydediliyor...' : 'Atamaları Kaydet'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                {classes.map((cls) => {
+                                  const allSelected =
+                                    allCourses.length > 0 &&
+                                    allCourses.every((co) =>
+                                      inlineAssignments.some(
+                                        (a) => a.class_id === cls.id && a.course_id === co.id
+                                      )
+                                    );
+                                  return (
+                                    <div
+                                      key={cls.id}
+                                      className="p-2.5 rounded-lg bg-white border border-emerald-200 space-y-1.5"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-slate-900">
+                                          {cls.name} ({cls.student_count} öğrenci)
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleInlineAllForClass(cls.id)}
+                                          className="text-[11px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                                        >
+                                          {allSelected ? 'Temizle' : 'Tüm Dersleri Seç'}
+                                        </button>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {allCourses.map((co) => {
+                                          const checked = inlineAssignments.some(
+                                            (a) => a.class_id === cls.id && a.course_id === co.id
+                                          );
+                                          return (
+                                            <button
+                                              type="button"
+                                              key={co.id}
+                                              onClick={() => toggleInlinePair(cls.id, co.id)}
+                                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs cursor-pointer ${
+                                                checked
+                                                  ? 'bg-emerald-600 border-emerald-600 text-white font-medium'
+                                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-emerald-400'
+                                              }`}
+                                            >
+                                              {checked && <Check className="w-3 h-3" />}
+                                              <span>{co.name}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

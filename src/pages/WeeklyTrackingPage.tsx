@@ -8,11 +8,13 @@ import {
   AlertCircle,
   Wand2,
   Sparkles,
+  PowerOff,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type {
   ClassInfo,
   Course,
+  Outcome,
   WeeklyScoresResponse,
   WeeklyStatus,
   WeeklyTask,
@@ -20,18 +22,20 @@ import type {
 
 interface WeeklyTrackingPageProps {
   courses: Course[];
+  outcomes: Outcome[];
   onCoursesChanged: () => Promise<void>;
 }
 
 const DEFAULT_4_WEEK_PLAN = [
-  { week_no: 1, title: 'Proje Analizi ve İş Planı', description: 'Kapsam, gereksinimler ve akış hazırlığı', max_score: 10 },
-  { week_no: 2, title: 'Tasarım Kontrolü (Arayüz / Veritabanı)', description: 'Ekran taslakları, veritabanı veya sınıf tasarımı', max_score: 15 },
-  { week_no: 3, title: 'Temel Kodlama ve Ana Modüller', description: 'Çekirdek işlevlerin kodlanması', max_score: 15 },
-  { week_no: 4, title: 'Geliştirme, Hata Ayıklama ve Test', description: 'Eksiklerin giderilmesi ve son testler', max_score: 10 },
+  { outcome_id: 1, week_no: 1, title: 'Proje Analizi ve İş Planı', description: 'Kapsam, gereksinimler ve akış hazırlığı', max_score: 10 },
+  { outcome_id: 2, week_no: 2, title: 'Tasarım Kontrolü (Arayüz / Veritabanı)', description: 'Ekran taslakları, veritabanı veya sınıf tasarımı', max_score: 15 },
+  { outcome_id: 3, week_no: 3, title: 'Temel Kodlama ve Ana Modüller', description: 'Çekirdek işlevlerin kodlanması', max_score: 15 },
+  { outcome_id: 3, week_no: 4, title: 'Geliştirme, Hata Ayıklama ve Test', description: 'Eksiklerin giderilmesi ve son testler', max_score: 10 },
 ];
 
 export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
   courses,
+  outcomes,
   onCoursesChanged,
 }) => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
@@ -44,13 +48,19 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
+  const rubricOutcomes = useMemo(
+    () => outcomes.filter((o) => !o.is_question_outcome),
+    [outcomes]
+  );
+
   // Yeni haftalık görev formu
   const [weekNo, setWeekNo] = useState<number>(1);
+  const [selectedOutcomeId, setSelectedOutcomeId] = useState<number>(rubricOutcomes[0]?.id ?? 1);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskScore, setTaskScore] = useState<number>(10);
   const [taskDate, setTaskDate] = useState('');
 
-  // Düzenlenebilir öğrenci haftalık puan taslağı (aktif görev için)
+  // Düzenlenebilir öğrenci haftalık puan taslağı
   const [draftScores, setDraftScores] = useState<
     Record<number, { status: WeeklyStatus; score: number; note: string }>
   >({});
@@ -79,6 +89,12 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
       } else {
         setActiveTaskId(0);
       }
+    } catch (err) {
+      setData(null);
+      setMessage({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Haftalık takip verileri alınamadı.',
+      });
     } finally {
       setLoading(false);
     }
@@ -86,11 +102,11 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
 
   useEffect(() => {
     if (selectedClassId && selectedCourseId) {
+      setMessage(null);
       loadWeekly(selectedClassId, selectedCourseId);
     }
   }, [selectedClassId, selectedCourseId]);
 
-  // Aktif hafta değiştiğinde öğrenci taslaklarını doldur
   useEffect(() => {
     if (!data || !activeTaskId) {
       setDraftScores({});
@@ -126,26 +142,32 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
     );
   }, [weeklyMaxSum, activeCourse]);
 
-  const handleEnableWeeklyMode = async () => {
+  const handleToggleWeeklyMode = async (enable: boolean) => {
     if (!activeCourse) return;
     setMessage(null);
-    await api.updateCourse({
-      id: activeCourse.id,
-      subject_id: activeCourse.subject_id,
-      name: activeCourse.name,
-      short_code: activeCourse.short_code,
-      description: activeCourse.description ?? '',
-      question_points: activeCourse.question_points,
-      evaluation_mode: 'weekly_plus_final',
-      final_completion_points: activeCourse.final_completion_points ?? 20,
-      final_report_points: activeCourse.final_report_points ?? 10,
-      sort_order: activeCourse.sort_order,
-    });
-    await onCoursesChanged();
-    setMessage({
-      type: 'ok',
-      text: `${activeCourse.name} için "Haftalık Takip + Proje Sonu Final" modu aktifleştirildi!`,
-    });
+    try {
+      await api.updateCourse({
+        id: activeCourse.id,
+        subject_id: activeCourse.subject_id,
+        name: activeCourse.name,
+        short_code: activeCourse.short_code,
+        description: activeCourse.description ?? '',
+        question_points: activeCourse.question_points,
+        evaluation_mode: enable ? 'weekly_plus_final' : 'rubric_full',
+        final_completion_points: activeCourse.final_completion_points ?? 20,
+        final_report_points: activeCourse.final_report_points ?? 10,
+        sort_order: activeCourse.sort_order,
+      });
+      await onCoursesChanged();
+      setMessage({
+        type: 'ok',
+        text: enable
+          ? `${activeCourse.name} için "Haftalık Takip + Proje Sonu Final" modu AÇILDI.`
+          : `${activeCourse.name} için Haftalık Takip modu KAPATILDI (Standart 5 Kazanım Rubiğine dönüldü; kayıtlı verileriniz korunur).`,
+      });
+    } catch (err) {
+      setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Mod değiştirilemedi.' });
+    }
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -155,6 +177,7 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
     try {
       const res = await api.createWeeklyTask({
         course_id: selectedCourseId,
+        outcome_id: selectedOutcomeId || null,
         week_no: weekNo,
         title: taskTitle.trim(),
         max_score: taskScore,
@@ -178,7 +201,7 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
       await loadWeekly(selectedClassId, selectedCourseId);
       setMessage({
         type: 'ok',
-        text: 'Hazır 4 haftalık kontrol planı (Toplam 50 puan) yüklendi.',
+        text: 'Hazır 4 haftalık kontrol planı (Kazanımlara bağlı, toplam 50 puan) yüklendi.',
       });
     } catch (err) {
       setMessage({ type: 'err', text: err instanceof Error ? err.message : 'Yüklenemedi.' });
@@ -243,7 +266,7 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Haftalık Çalışma Planı &amp; Süreç Kontrolü</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Proje çalışmalarını haftalara bölüp (ör. 1. Hafta Planlama, 2. Hafta Tasarım...) her hafta tüm sınıfı tek ekrandan hızlıca puanlayın; proje sonunda yalnızca <strong>Proje Bitimi, Rapor ve 3 Soru</strong> değerlendirilir.
+            Proje çalışmalarını <strong>Ana Kazanımlara</strong> bağlı haftalara bölün, her hafta tüm sınıfı hızlıca puanlayın; proje sonunda yalnızca <strong>Proje Bitimi, Rapor ve 3 Soru</strong> değerlendirilir.
           </p>
         </div>
 
@@ -281,15 +304,15 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
         ))}
       </div>
 
-      {/* Mod Bilgilendirme / Tek Tıkla Aktivasyon */}
+      {/* Mod Aç / Kapat Şeridi */}
       {activeCourse && activeCourse.evaluation_mode !== 'weekly_plus_final' ? (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-3 text-sm text-amber-900">
           <div>
-            <strong>{activeCourse.name}</strong> şu an <em>Standart Rubik / Uygulama</em> modunda. Haftalık puanların final nota yansıması ve proje sonunda sadece Bitim + Rapor + 3 Soru sorulması için Haftalık Takip modunu açabilirsiniz.
+            <strong>{activeCourse.name}</strong> şu an <em>Standart Rubik / Uygulama</em> modunda. Haftalık puanların final nota yansıması için Haftalık Takip modunu açabilirsiniz.
           </div>
           <button
             type="button"
-            onClick={handleEnableWeeklyMode}
+            onClick={() => handleToggleWeeklyMode(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold cursor-pointer shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5" /> Bu Projede Haftalık Takip Modunu Aç
@@ -297,38 +320,49 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
         </div>
       ) : (
         activeCourse && (
-          <div className="p-4 rounded-xl bg-violet-50 border border-violet-200 text-sm text-violet-950 flex flex-wrap items-center justify-between gap-2">
+          <div className="p-4 rounded-xl bg-violet-50 border border-violet-200 text-sm text-violet-950 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <strong>Puan Dağılımı ({activeCourse.name}):</strong> Haftalık Kontroller (<strong>{weeklyMaxSum}p</strong>) + Proje Bitimi (<strong>{activeCourse.final_completion_points}p</strong>) + Rapor (<strong>{activeCourse.final_report_points}p</strong>) + 3 Soru (<strong>{activeCourse.question_points}p</strong>) ={' '}
+              <strong>Haftalık Mod Aktif ({activeCourse.name}):</strong> Haftalık (<strong>{weeklyMaxSum}p</strong>) + Proje Bitimi (<strong>{activeCourse.final_completion_points ?? 20}p</strong>) + Rapor (<strong>{activeCourse.final_report_points ?? 10}p</strong>) + 3 Soru (<strong>{activeCourse.question_points}p</strong>) ={' '}
               <strong className={Math.abs(finalBudgetTotal - 100) < 0.01 ? 'text-emerald-700' : 'text-amber-700'}>
                 {finalBudgetTotal} / 100 Puan
               </strong>
             </div>
-            <span className="text-xs text-violet-700">
-              Final puan ağırlıklarını Ayarlar ekranından değiştirebilirsiniz.
-            </span>
+            <button
+              type="button"
+              onClick={() => handleToggleWeeklyMode(false)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold cursor-pointer shrink-0"
+            >
+              <PowerOff className="w-3.5 h-3.5" /> Haftalık Modu Kapat (Standart Rubiğe Dön)
+            </button>
           </div>
         )
       )}
 
       {message && (
         <div
-          className={`flex items-center gap-2 p-3.5 rounded-xl text-sm border ${
+          className={`flex items-start gap-2 p-3.5 rounded-xl text-sm border ${
             message.type === 'ok'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-red-50 border-red-200 text-red-700'
           }`}
         >
           {message.type === 'ok' ? (
-            <CheckCircle2 className="w-5 h-5 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
           ) : (
-            <AlertCircle className="w-5 h-5 shrink-0" />
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           )}
-          <span>{message.text}</span>
+          <div>
+            <div>{message.text}</div>
+            {message.type === 'err' && message.text.includes('Bilinmeyen API rotası') && (
+              <div className="text-xs mt-1 text-red-600">
+                <strong>Çözüm:</strong> Sunucudaki <code>okul360.kiracbilisim.net/proje-api/</code> klasörüne güncel v2 PHP dosyalarını (<code>index.php</code>, <code>auth.php</code> ve <code>endpoints/</code>) yükleyip phpMyAdmin&apos;den <code>database/migration_v2.sql</code> dosyasını Import edin.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Haftalık Plan Yönetimi */}
+      {/* Haftalık Plan Yönetimi (Ana Kazanım Seçimli!) */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-semibold text-sm text-slate-900">
@@ -347,8 +381,8 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
         </div>
 
         <form onSubmit={handleAddTask} className="grid sm:grid-cols-12 gap-2.5 items-end">
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Hafta No</label>
+          <div className="sm:col-span-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Hafta</label>
             <input
               type="number"
               min={1}
@@ -356,10 +390,25 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
               required
               value={weekNo}
               onChange={(e) => setWeekNo(Number(e.target.value))}
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm text-center"
+              className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm text-center"
             />
           </div>
-          <div className="sm:col-span-5">
+          <div className="sm:col-span-3">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Ana Kazanım</label>
+            <select
+              value={selectedOutcomeId}
+              onChange={(e) => setSelectedOutcomeId(Number(e.target.value))}
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white"
+            >
+              <option value={0}>-- Genel --</option>
+              {rubricOutcomes.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.code}. {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-4">
             <label className="block text-xs font-medium text-slate-600 mb-1">Haftalık Görev / Kontrol Konusu *</label>
             <input
               type="text"
@@ -370,8 +419,8 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
             />
           </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Maks. Puan</label>
+          <div className="sm:col-span-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Puan</label>
             <input
               type="number"
               min={1}
@@ -380,7 +429,7 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
               required
               value={taskScore}
               onChange={(e) => setTaskScore(Number(e.target.value))}
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm text-center font-semibold"
+              className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm text-center font-semibold"
             />
           </div>
           <div className="sm:col-span-1">
@@ -417,7 +466,17 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
                 }`}
               >
                 <span>
-                  <strong>H{t.week_no}:</strong> {t.title} ({t.max_score}p)
+                  <strong>H{t.week_no}</strong>
+                  {t.outcome_name && (
+                    <span
+                      className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${
+                        activeTaskId === t.id ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800'
+                      }`}
+                    >
+                      {t.outcome_code ? `${t.outcome_code} · ` : ''}{t.outcome_name}
+                    </span>
+                  )}{' '}
+                  {t.title} ({t.max_score}p)
                 </span>
                 <button
                   type="button"
@@ -450,11 +509,16 @@ export const WeeklyTrackingPage: React.FC<WeeklyTrackingPageProps> = ({
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-            <div>
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-sm text-slate-900">
                 {activeTask?.week_no}. Hafta Kontrolü: {activeTask?.title}
               </span>
-              <span className="ml-2 text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+              {activeTask?.outcome_name && (
+                <span className="text-xs font-semibold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
+                  {activeTask.outcome_code}. {activeTask.outcome_name}
+                </span>
+              )}
+              <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
                 Maks. {activeTask?.max_score} Puan
               </span>
             </div>

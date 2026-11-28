@@ -34,16 +34,16 @@ const StudentHalfCard: React.FC<{
     data.settings.school_name?.trim() || data.class_info.school_name?.trim() || '';
   const formTitle = data.settings.evaluation_title || 'PROJE DEĞERLENDİRME VE RUBİK FORMU';
   const isWeeklyMode = data.course.evaluation_mode === 'weekly_plus_final';
-  const showQuestions = data.course.question_points > 0;
-  const rubricOutcomes = data.outcomes.filter((o) => !o.is_question_outcome);
-  const weeklyMax = data.weekly_tasks.reduce((s, w) => s + w.max_score, 0);
-  const rubricMax = data.criteria.reduce((sum, c) => sum + c.max_score, 0);
+  const showQuestions = (data.course.question_points ?? 20) > 0;
+  const rubricOutcomes = (data.outcomes ?? []).filter((o) => !o.is_question_outcome);
+  const weeklyTasks = data.weekly_tasks ?? [];
+  const weeklyMax = weeklyTasks.reduce((s, w) => s + w.max_score, 0);
+  const rubricMax = (data.criteria ?? []).reduce((sum, c) => sum + c.max_score, 0);
+  const finalCompletionMax = data.course.final_completion_points ?? 20;
+  const finalReportMax = data.course.final_report_points ?? 10;
   const totalMax = isWeeklyMode
-    ? weeklyMax +
-      data.course.final_completion_points +
-      data.course.final_report_points +
-      data.course.question_points
-    : rubricMax + data.course.question_points;
+    ? weeklyMax + finalCompletionMax + finalReportMax + (data.course.question_points ?? 20)
+    : rubricMax + (data.course.question_points ?? 20);
 
   const teachersToDisplay: SignatureTeacher[] =
     signatureTeachers.length > 0
@@ -135,14 +135,18 @@ const StudentHalfCard: React.FC<{
                 </tr>
               </thead>
               <tbody>
-                {data.weekly_tasks.map((wt) => {
-                  const ws = student.weekly_scores[String(wt.id)];
+                {weeklyTasks.map((wt) => {
+                  const ws = (student.weekly_scores ?? {})[String(wt.id)];
                   return (
                     <tr key={wt.id}>
                       <td className="border border-slate-400 px-2 py-[2.5px] font-bold bg-slate-50">
-                        Hafta {wt.week_no}
+                        H{wt.week_no}
+                        {wt.outcome_code ? ` · ${wt.outcome_code}` : ''}
                       </td>
-                      <td className="border border-slate-400 px-2 py-[2.5px]">{wt.title}</td>
+                      <td className="border border-slate-400 px-2 py-[2.5px]">
+                        {wt.outcome_name ? <strong>{wt.outcome_name}: </strong> : null}
+                        {wt.title}
+                      </td>
                       <td className="border border-slate-400 px-1 py-[2.5px] text-center font-semibold">
                         {wt.max_score}
                       </td>
@@ -161,7 +165,7 @@ const StudentHalfCard: React.FC<{
                     Proje Bitimi ve Çalışırlık Kontrolü
                   </td>
                   <td className="border border-slate-400 px-1 py-[2.5px] text-center font-semibold">
-                    {data.course.final_completion_points}
+                    {finalCompletionMax}
                   </td>
                   <td className="border border-slate-400 px-1 py-[2.5px] text-center font-bold">
                     {filledMode && student.evaluation?.final_completion_score !== null && student.evaluation?.final_completion_score !== undefined
@@ -177,7 +181,7 @@ const StudentHalfCard: React.FC<{
                     Proje Raporu ve Dokümantasyon
                   </td>
                   <td className="border border-slate-400 px-1 py-[2.5px] text-center font-semibold">
-                    {data.course.final_report_points}
+                    {finalReportMax}
                   </td>
                   <td className="border border-slate-400 px-1 py-[2.5px] text-center font-bold">
                     {filledMode && student.evaluation?.final_report_score !== null && student.evaluation?.final_report_score !== undefined

@@ -83,9 +83,11 @@ function pd_handle_evaluations(string $method): void {
 
         // Haftalık görevler + öğrencinin haftalık puanları
         $wtStmt = $pdo->prepare(
-            'SELECT wt.id, wt.week_no, wt.title, wt.description, wt.max_score, wt.due_date,
+            'SELECT wt.id, wt.outcome_id, o.code AS outcome_code, o.name AS outcome_name,
+                    wt.week_no, wt.title, wt.description, wt.max_score, wt.due_date,
                     sws.status, sws.score, sws.note
              FROM pd_weekly_tasks wt
+             LEFT JOIN pd_outcomes o ON o.id = wt.outcome_id
              LEFT JOIN pd_student_weekly_scores sws ON sws.weekly_task_id = wt.id AND sws.student_id = ?
              WHERE wt.course_id = ?
              ORDER BY wt.week_no ASC, wt.sort_order ASC, wt.id ASC'
@@ -534,7 +536,12 @@ function pd_handle_print_data(string $method): void {
     }
 
     $wtStmt = $pdo->prepare(
-        'SELECT id, week_no, title, max_score FROM pd_weekly_tasks WHERE course_id = ? ORDER BY week_no ASC, sort_order ASC, id ASC'
+        'SELECT wt.id, wt.outcome_id, o.code AS outcome_code, o.name AS outcome_name,
+                wt.week_no, wt.title, wt.max_score
+         FROM pd_weekly_tasks wt
+         LEFT JOIN pd_outcomes o ON o.id = wt.outcome_id
+         WHERE wt.course_id = ?
+         ORDER BY wt.week_no ASC, wt.sort_order ASC, wt.id ASC'
     );
     $wtStmt->execute([$courseId]);
     $weeklyTasks = $wtStmt->fetchAll();

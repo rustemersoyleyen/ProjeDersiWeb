@@ -177,7 +177,11 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
     return Object.values(critScores).reduce((sum, item) => sum + (Number(item.score) || 0), 0);
   }, [critScores, isWeeklyMode, finalCompletionScore, finalReportScore]);
 
-  const weeklyEarned = evalData?.weekly_summary.earned ?? 0;
+  const weeklyEarned = evalData?.weekly_summary?.earned ?? 0;
+  const weeklyMax = evalData?.weekly_summary?.max ?? 0;
+  const weeklyItems = evalData?.weekly_items ?? [];
+  const finalCompletionMax = evalData?.course?.final_completion_points ?? 20;
+  const finalReportMax = evalData?.course?.final_report_points ?? 10;
 
   const questionTotal = useMemo(() => {
     return Object.values(qScores).reduce((sum, item) => {
@@ -493,16 +497,16 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                         Haftalık Süreç Kontrolleri Özeti
                       </div>
                       <span className="text-xs font-bold text-violet-800">
-                        {evalData.weekly_summary.earned} / {evalData.weekly_summary.max} Puan
+                        {weeklyEarned} / {weeklyMax} Puan
                       </span>
                     </div>
-                    {evalData.weekly_items.length === 0 ? (
+                    {weeklyItems.length === 0 ? (
                       <div className="p-4 text-xs text-slate-500">
                         Bu proje için henüz haftalık görev tanımlanmamış. Sol menüdeki <strong>Haftalık Takip</strong> ekranından ekleyebilirsiniz.
                       </div>
                     ) : (
                       <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                        {evalData.weekly_items.map((w) => (
+                        {weeklyItems.map((w) => (
                           <div
                             key={w.id}
                             className={`p-2.5 rounded-lg border text-xs ${
@@ -514,11 +518,19 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                             }`}
                           >
                             <div className="flex justify-between font-bold text-slate-800">
-                              <span>H{w.week_no}</span>
+                              <span>
+                                H{w.week_no}
+                                {w.outcome_code ? ` · ${w.outcome_code}` : ''}
+                              </span>
                               <span>
                                 {w.score} / {w.max_score}p
                               </span>
                             </div>
+                            {w.outcome_name && (
+                              <div className="text-[10px] font-semibold text-indigo-700 mt-0.5">
+                                {w.outcome_name}
+                              </div>
+                            )}
                             <div className="text-slate-600 truncate mt-0.5" title={w.title}>
                               {w.title}
                             </div>
@@ -541,14 +553,12 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                             1. Proje Bitimi / Çalışırlık
                           </span>
                           <span className="text-xs font-bold text-indigo-700">
-                            Maks. {evalData.course.final_completion_points}p
+                            Maks. {finalCompletionMax}p
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
                           {[0.25, 0.5, 0.75, 1].map((ratio) => {
-                            const val = Number(
-                              (evalData.course.final_completion_points * ratio).toFixed(1)
-                            );
+                            const val = Number((finalCompletionMax * ratio).toFixed(1));
                             return (
                               <button
                                 key={ratio}
@@ -564,7 +574,7 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                         <input
                           type="number"
                           min={0}
-                          max={evalData.course.final_completion_points}
+                          max={finalCompletionMax}
                           step={0.5}
                           placeholder="0"
                           value={finalCompletionScore}
@@ -580,14 +590,12 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                             2. Proje Raporu &amp; Dokümantasyon
                           </span>
                           <span className="text-xs font-bold text-indigo-700">
-                            Maks. {evalData.course.final_report_points}p
+                            Maks. {finalReportMax}p
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
                           {[0.25, 0.5, 0.75, 1].map((ratio) => {
-                            const val = Number(
-                              (evalData.course.final_report_points * ratio).toFixed(1)
-                            );
+                            const val = Number((finalReportMax * ratio).toFixed(1));
                             return (
                               <button
                                 key={ratio}
@@ -603,7 +611,7 @@ export const EvaluatePage: React.FC<EvaluatePageProps> = ({
                         <input
                           type="number"
                           min={0}
-                          max={evalData.course.final_report_points}
+                          max={finalReportMax}
                           step={0.5}
                           placeholder="0"
                           value={finalReportScore}

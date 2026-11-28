@@ -164,6 +164,9 @@ export interface StudentQuestion {
 export interface WeeklyTask {
   id: number;
   course_id: number;
+  outcome_id?: number | null;
+  outcome_code?: string | null;
+  outcome_name?: string | null;
   week_no: number;
   title: string;
   description?: string | null;
@@ -217,8 +220,11 @@ export interface EvaluationData {
     final_report_points: number;
   };
   criteria: Criterion[];
-  weekly_items: Array<{
+  weekly_items?: Array<{
     id: number;
+    outcome_id?: number | null;
+    outcome_code?: string | null;
+    outcome_name?: string | null;
     week_no: number;
     title: string;
     description?: string | null;
@@ -228,7 +234,7 @@ export interface EvaluationData {
     score: number;
     note?: string | null;
   }>;
-  weekly_summary: {
+  weekly_summary?: {
     earned: number;
     max: number;
   };
@@ -303,8 +309,11 @@ export interface PrintDataResponse {
     max_score: number;
     sort_order: number;
   }>;
-  weekly_tasks: Array<{
+  weekly_tasks?: Array<{
     id: number;
+    outcome_id?: number | null;
+    outcome_code?: string | null;
+    outcome_name?: string | null;
     week_no: number;
     title: string;
     max_score: number;
@@ -322,8 +331,8 @@ export interface PrintDataResponse {
       max_score: number;
       score: number | null;
     }>;
-    weekly_scores: Record<string, { status: WeeklyStatus; score: number }>;
-    weekly_total: number;
+    weekly_scores?: Record<string, { status: WeeklyStatus; score: number }>;
+    weekly_total?: number;
     evaluation: {
       rubric_total: number;
       weekly_total: number;
